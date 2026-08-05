@@ -34,13 +34,16 @@ complexity, data-structure invariants, and API contract changes.
 
 **Scientists, physicists, and mathematicians** — research code fails
 differently: it rarely crashes, it produces *plausible-but-invalid results*.
-The shipped `domain-science` profile emphasizes unit and dimensional validity,
-surrogate-vs-ground-truth boundaries, statistical validity (leakage, multiple
-comparisons), and reproducibility (seeds, environments, data provenance). And
-at the research frontier there is no oracle to check against — `/signoff`
-deliberately does not claim to verify that the science is *right*; it verifies
-that **you** know the assumptions, the validity regimes, and how you'd notice
-drift outside them. That is exactly the part a human must own.
+An ML parameterization that quietly leaks energy, a unit slip between hPa and
+Pa, a trend that vanishes at higher grid resolution — none of these throw an
+exception. The shipped `domain-science` profile emphasizes unit and
+dimensional validity, surrogate-vs-ground-truth boundaries, numerical
+stability, statistical validity (leakage, multiple comparisons), uncertainty
+quantification, and reproducibility (seeds, environments, data provenance).
+And at the research frontier there is no oracle to check against —
+`/signoff` deliberately does not claim to verify that the science is *right*;
+it verifies that **you** know the assumptions, the validity regimes, and how
+you'd notice drift outside them. That is exactly the part a human must own.
 
 ## Use it: three steps
 
@@ -68,39 +71,40 @@ customization point of the skill; profiles can add domain emphases but can
 never remove axes or lower pass criteria, so a customized interview is never
 a weaker one.
 
-**Switch to the science profile** (or any shipped profile):
+**The dead-simple path — commit a profile to your own repository:**
 
-1. Open `skills/signoff/SKILL.md` in your installed copy of the skill.
-2. Find the block between `<!-- INTERVIEW-PROFILE:BEGIN ... -->` and
-   `<!-- INTERVIEW-PROFILE:END -->`.
-3. Replace it (markers included) with the block from
-   [`profiles/domain-science.md`](skills/signoff/profiles/domain-science.md).
+1. In the repo you want reviewed, create `.signoff/profile.md`.
+2. Paste in a shipped profile block —
+   [`domain-science`](skills/signoff/profiles/domain-science.md) for research
+   code, [`software-general`](skills/signoff/profiles/software-general.md)
+   for classic engineering — or edit its bullets into your own.
+3. Done. Every `/signoff` run on that repository now uses your profile — for
+   every collaborator, on every install channel, surviving skill updates.
 
-**Write your own profile for your lab or team:**
+**Write your own profile for your lab or team:** copy a shipped profile as a
+template, set your own `Profile-ID:` (lowercase, hyphens), and rewrite the
+emphasis bullets to name *your* failure modes — conservation properties of a
+new parameterization, grid-resolution sensitivity of a reported trend,
+CFL-limited timestep choices, leakage between reanalysis training and
+evaluation periods, what the ensemble spread does and doesn't capture —
+whatever "wrong but plausible" looks like in your field.
 
-1. Copy a shipped profile as a template
-   ([`software-general`](skills/signoff/profiles/software-general.md) or
-   [`domain-science`](skills/signoff/profiles/domain-science.md)).
-2. Set a `Profile-ID:` of your own (lowercase, hyphens).
-3. Rewrite the emphasis bullets to name *your* failure modes — mesh
-   convergence and discretization error, detector calibration drift,
-   floating-point conditioning, proof obligations, IRB/data-handling
-   constraints — whatever "wrong but plausible" looks like in your field.
-4. Paste it over the block in `SKILL.md` as above.
+**Science is probed by default:** even with no customization at all, any
+diff that touches scientific computation — numpy/scipy/jax-style imports,
+notebooks, RNG seeding, unit-bearing constants, netCDF/GRIB/zarr datasets —
+automatically triggers the science questions on top of the active profile.
 
-Every attestation records which profile actually ran (the
-`interview=<level>/<profile-id>` token of `Signoff-Agent`), so downstream
-readers can always see which question set the human was held to.
+Every attestation records which question set actually ran: the profile ID
+plus, for repo-supplied profiles, a content digest
+(`Signoff-Agent: ... interview=standard/<your-profile-id>/sha256:<digest>`),
+so downstream readers can always see which questions the human was held to —
+and a diluted profile is distinguishable from a shipped one.
 
-> **Caveat & roadmap:** on the auto-updating plugin channel, edits to the
-> installed `SKILL.md` are overwritten on update — customize via the zip or
-> folder-copy channels for now. Planned (Phase 3d in the
-> [spec's phase gates](skills/signoff/specs/gsa-core.md)): drop a
-> `.signoff/profile.md` in *your own repository* and it overrides the
-> embedded profile for everyone who runs `/signoff` there; plus, on by
-> default, any diff that touches scientific computation (numpy/scipy/jax
-> imports, notebooks, RNG seeding, unit-bearing constants, datasets) spawns
-> the science probes automatically, whatever profile is active.
+Other knobs: `SIGNOFF_PROFILE_FILE=<path>` overrides everything for one
+machine; editing the block inside an installed `SKILL.md` still works for
+self-managed copies (auto-updating plugin installs overwrite such edits —
+prefer the repo-local file). Full details:
+[HARNESSES.md](skills/signoff/HARNESSES.md).
 
 ## What an attestation looks like
 
