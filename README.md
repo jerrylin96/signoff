@@ -2,24 +2,55 @@
 
 **Verify that a human actually understands an AI-assisted diff before it merges.**
 
-`/signoff` runs a Socratic reverse-interview across four fixed axes — mechanics
-& intent, trade-offs & edge cases, boundary conditions & failure loudness, and
-ownership — then records the outcome as a machine-parsable **Git Signoff
-Attestation**: an empty signed commit plus a mirrored git note
-(`refs/notes/signoff`) that survives squash merges and branch deletion.
+`/signoff` flips the usual review direction: instead of you interrogating the
+AI's code, the AI interviews **you** — then records the outcome as a
+machine-parsable, tamper-evident **Git Signoff Attestation** inside your
+repository.
 
-The protocol is harness-, model-, and vendor-neutral. The skill is
-prompt-driven and self-contained; the optional `signoff-mcp` server adds
-deterministic server-side enforcement (derived status, stale-state circuit
-breakers, notes concurrency handling).
+## What it does, in plain language
 
-- **Protocol spec:** [`skills/signoff/specs/gsa-core.md`](skills/signoff/specs/gsa-core.md)
-- **Per-harness install & portability guide:** [`skills/signoff/HARNESSES.md`](skills/signoff/HARNESSES.md)
-- **Skill entry point:** [`skills/signoff/SKILL.md`](skills/signoff/SKILL.md)
+You (or your AI assistant) changed some code. Before that change merges — or
+before its output goes into a paper, a report, or a decision — run `/signoff`.
+The agent reads the full diff, then asks you a short series of pointed
+questions across four fixed axes:
 
-## Install
+1. **Mechanics & intent** — what changed, and why this design?
+2. **Trade-offs & edge cases** — what approximations were made, and are they intentional?
+3. **Boundary conditions & failure loudness** — where does it break, and does it break *loudly* or silently?
+4. **Ownership** — do you explicitly accept responsibility for the results and risks?
 
-Pick the **one** row for your surface — no channel requires another:
+Vague answers don't pass. If you hand-wave, the agent pauses, explains the
+relevant mechanics, and re-probes with a concrete scenario. When you do pass,
+it writes an empty signed commit plus a mirrored git note
+(`refs/notes/signoff`) recording who understood what, when, and at exactly
+which state of the code — a record that survives squash merges and branch
+deletion. The goal is preventing *cognitive surrender*: rubber-stamping AI
+output nobody actually understands.
+
+## Who it's for
+
+**Software engineers** — the default interview profile emphasizes algorithmic
+complexity, data-structure invariants, and API contract changes.
+
+**Scientists, physicists, and mathematicians** — research code fails
+differently: it rarely crashes, it produces *plausible-but-invalid results*.
+The shipped `domain-science` profile emphasizes unit and dimensional validity,
+surrogate-vs-ground-truth boundaries, statistical validity (leakage, multiple
+comparisons), and reproducibility (seeds, environments, data provenance). And
+at the research frontier there is no oracle to check against — `/signoff`
+deliberately does not claim to verify that the science is *right*; it verifies
+that **you** know the assumptions, the validity regimes, and how you'd notice
+drift outside them. That is exactly the part a human must own.
+
+## Use it: three steps
+
+1. **Install** — pick the **one** row for your surface below; no channel
+   requires another.
+2. **Run** — from the branch you want to merge, type `/signoff`
+   (`--deep` for a stricter interview, `--quick` for small low-risk diffs).
+3. **Answer and confirm** — respond in your own words, acknowledge the named
+   trade-offs and risks, confirm your email. The attestation commit and note
+   are created and pushed with your branch.
 
 | Where you work | One-time action |
 |---|---|
@@ -28,25 +59,48 @@ Pick the **one** row for your surface — no channel requires another:
 | **A team repo you control (cloud + local)** | Declare the plugin under [`enabledPlugins`](https://code.claude.com/docs/en/settings#enabledplugins) in that repo's `.claude/settings.json` — loads at session start from this marketplace and auto-updates. |
 | **Other harnesses (Antigravity, Codex, Goose, …)** | Copy the self-contained `skills/signoff/` folder into your harness's skill location and set the transcript adapter env vars — full matrix in [HARNESSES.md](skills/signoff/HARNESSES.md). |
 
-Then invoke with `/signoff` (modifiers: `--quick`, `--deep`).
+## Make it yours: changing what gets asked
 
-Why the split: this repo is a Claude Code **plugin marketplace**
-(`.claude-plugin/marketplace.json` at root; the repo root is the plugin), and
-the plugin is the auto-updating channel everywhere it reaches. As of
-2026-08-05, account-scoped plugin installs register in claude.ai cloud
-sessions but do not yet load the bundled skill there — hence the release-zip
-row for web/cloud, which retires once the platform closes that gap.
+The four axes above are fixed for everyone. What you customize is the
+**interview profile** — a single, clearly delimited text block that weights
+the questions toward your domain's failure modes. It is the sole
+customization point of the skill; profiles can add domain emphases but can
+never remove axes or lower pass criteria, so a customized interview is never
+a weaker one.
 
-### MCP server (optional enforcement)
+**Switch to the science profile** (or any shipped profile):
 
-```bash
-pip install "signoff-mcp @ git+https://github.com/jerrylin96/signoff"
-claude mcp add signoff -- signoff-mcp   # server must run with cwd = target repo
-```
+1. Open `skills/signoff/SKILL.md` in your installed copy of the skill.
+2. Find the block between `<!-- INTERVIEW-PROFILE:BEGIN ... -->` and
+   `<!-- INTERVIEW-PROFILE:END -->`.
+3. Replace it (markers included) with the block from
+   [`profiles/domain-science.md`](skills/signoff/profiles/domain-science.md).
 
-Tools: `signoff_prepare`, `signoff_commit` (server-derived status,
-`ack_no_transcript` circuit breaker), `signoff_push_notes`
-(`cat_sort_uniq` notes merge). PyPI release pending.
+**Write your own profile for your lab or team:**
+
+1. Copy a shipped profile as a template
+   ([`software-general`](skills/signoff/profiles/software-general.md) or
+   [`domain-science`](skills/signoff/profiles/domain-science.md)).
+2. Set a `Profile-ID:` of your own (lowercase, hyphens).
+3. Rewrite the emphasis bullets to name *your* failure modes — mesh
+   convergence and discretization error, detector calibration drift,
+   floating-point conditioning, proof obligations, IRB/data-handling
+   constraints — whatever "wrong but plausible" looks like in your field.
+4. Paste it over the block in `SKILL.md` as above.
+
+Every attestation records which profile actually ran (the
+`interview=<level>/<profile-id>` token of `Signoff-Agent`), so downstream
+readers can always see which question set the human was held to.
+
+> **Caveat & roadmap:** on the auto-updating plugin channel, edits to the
+> installed `SKILL.md` are overwritten on update — customize via the zip or
+> folder-copy channels for now. Planned (Phase 3d in the
+> [spec's phase gates](skills/signoff/specs/gsa-core.md)): drop a
+> `.signoff/profile.md` in *your own repository* and it overrides the
+> embedded profile for everyone who runs `/signoff` there; plus, on by
+> default, any diff that touches scientific computation (numpy/scipy/jax
+> imports, notebooks, RNG seeding, unit-bearing constants, datasets) spawns
+> the science probes automatically, whatever profile is active.
 
 ## What an attestation looks like
 
@@ -69,13 +123,32 @@ Signoff-Agent: harness=claude-code/2.x model=... reasoning=... interview=standar
 Verification survives squash merges via the reviewed **tree SHA** and the
 notes mirror — lookup order in [gsa-core.md §5](skills/signoff/specs/gsa-core.md).
 
-## Customization
+The protocol is harness-, model-, and vendor-neutral. The skill is
+prompt-driven and self-contained; the optional `signoff-mcp` server adds
+deterministic server-side enforcement (derived status, stale-state circuit
+breakers, notes concurrency handling).
 
-Exactly one delimited `INTERVIEW-PROFILE` block in `SKILL.md` is the sole
-customization point. Shipped profiles:
-[`software-general`](skills/signoff/profiles/software-general.md) (default),
-[`domain-science`](skills/signoff/profiles/domain-science.md). Universal
-axes, intensity levels, and attestation mechanics are fixed.
+- **Protocol spec:** [`skills/signoff/specs/gsa-core.md`](skills/signoff/specs/gsa-core.md)
+- **Per-harness install & portability guide:** [`skills/signoff/HARNESSES.md`](skills/signoff/HARNESSES.md)
+- **Skill entry point:** [`skills/signoff/SKILL.md`](skills/signoff/SKILL.md)
+
+Why the install split: this repo is a Claude Code **plugin marketplace**
+(`.claude-plugin/marketplace.json` at root; the repo root is the plugin), and
+the plugin is the auto-updating channel everywhere it reaches. As of
+2026-08-05, account-scoped plugin installs register in claude.ai cloud
+sessions but do not yet load the bundled skill there — hence the release-zip
+row for web/cloud, which retires once the platform closes that gap.
+
+### MCP server (optional enforcement)
+
+```bash
+pip install "signoff-mcp @ git+https://github.com/jerrylin96/signoff"
+claude mcp add signoff -- signoff-mcp   # server must run with cwd = target repo
+```
+
+Tools: `signoff_prepare`, `signoff_commit` (server-derived status,
+`ack_no_transcript` circuit breaker), `signoff_push_notes`
+(`cat_sort_uniq` notes merge). PyPI release pending.
 
 ## Development
 
