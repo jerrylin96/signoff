@@ -330,3 +330,61 @@ def test_signoff_phase3c_interview_contract():
     assert "sole customization point" in harnesses_content, "Missing 'sole customization point' documentation in skills/signoff/HARNESSES.md"
     assert "profiles/software-general.md" in harnesses_content, "Missing software-general profile reference in HARNESSES.md"
     assert "profiles/domain-science.md" in harnesses_content, "Missing domain-science profile reference in HARNESSES.md"
+
+
+def test_signoff_phase3d_research_accessibility_contract():
+    """Verify Phase 3d: repo-local profile resolution, science-detection guard, profile provenance digest, and expanded science profile."""
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    paths = {
+        "skills/signoff/SKILL.md": None,
+        "skills/signoff/specs/gsa-core.md": None,
+        "skills/signoff/HARNESSES.md": None,
+        "skills/signoff/profiles/domain-science.md": None,
+    }
+    for rel in paths:
+        path = os.path.join(root_dir, rel)
+        assert os.path.exists(path), f"{rel} does not exist"
+        with open(path, "r", encoding="utf-8") as f:
+            paths[rel] = f.read()
+    signoff_content = paths["skills/signoff/SKILL.md"]
+    spec_content = paths["skills/signoff/specs/gsa-core.md"]
+    harnesses_content = paths["skills/signoff/HARNESSES.md"]
+    science_profile_content = paths["skills/signoff/profiles/domain-science.md"]
+
+    # (1) Repo-local profile resolution: env override -> repo-local file -> embedded default
+    for needle in ["SIGNOFF_PROFILE_FILE", ".signoff/profile.md"]:
+        for content, source in [
+            (signoff_content, "skills/signoff/SKILL.md"),
+            (spec_content, "skills/signoff/specs/gsa-core.md"),
+            (harnesses_content, "skills/signoff/HARNESSES.md"),
+        ]:
+            assert needle in content, f"Missing '{needle}' in {source}"
+    assert "fall back to the embedded default" in signoff_content, (
+        "Missing malformed-profile fallback rule in skills/signoff/SKILL.md"
+    )
+    # Resolution must not introduce a second literal block in SKILL.md
+    _extract_profile_block(signoff_content, "skills/signoff/SKILL.md")
+
+    # (2) Science-detection guard: additive, default-on, wired into cursory eligibility
+    assert "Science-detection escalation" in signoff_content, "Missing science-detection guard in skills/signoff/SKILL.md"
+    assert "profiles/domain-science.md" in signoff_content, "Science guard must reference profiles/domain-science.md"
+    for signal in ["numpy", "ipynb", "netCDF"]:
+        assert signal in signoff_content, f"Missing science-detection signal '{signal}' in skills/signoff/SKILL.md"
+    assert "Additive only" in signoff_content, "Science guard must be additive-only in skills/signoff/SKILL.md"
+    assert "cursory MUST be refused" in signoff_content, "Science-flagged diffs must refuse cursory in skills/signoff/SKILL.md"
+
+    # (3) Profile provenance: digest-extended interview= token
+    assert "PROFILE_DIGEST" in signoff_content, "Missing PROFILE_DIGEST computation in skills/signoff/SKILL.md"
+    assert "/sha256:" in signoff_content, "Missing /sha256: digest segment in skills/signoff/SKILL.md"
+    assert "[/sha256:<profile-digest-prefix>]" in spec_content, (
+        "Missing optional profile-digest segment in gsa-core.md Signoff-Agent grammar"
+    )
+    assert "interview=<level>/<profile-id>/sha256:<digest>" in harnesses_content, (
+        "Missing profile provenance documentation in HARNESSES.md"
+    )
+
+    # (4) Expanded science emphases (numerical stability, uncertainty quantification)
+    for term in ["Numerical stability", "cancellation", "Uncertainty quantification"]:
+        assert term in science_profile_content, (
+            f"Missing '{term}' emphasis in skills/signoff/profiles/domain-science.md"
+        )
