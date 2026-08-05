@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "signoff-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Git Signoff Attestation (GSA) Protocol v1.0 — deterministic MCP server mechanics for human comprehension attestations"
 readme = "README.md"
 license = { text = "MIT" }
