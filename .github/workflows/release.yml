@@ -3,6 +3,10 @@ name: Release
 on:
   push:
     tags: [ 'v*' ]
+  # Dispatch path: cloud sessions cannot push tags through the git proxy, so
+  # the release can also be cut from the Actions UI/API; the tag is then
+  # created by `gh release create` at the dispatched commit.
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -16,18 +20,25 @@ jobs:
       - name: Build skill zip
         run: cd skills && zip -r ../signoff.zip signoff
 
-      - name: Verify zip matches plugin version
+      - name: Resolve release tag from plugin version
+        id: ver
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
           PLUGIN_VERSION=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
-          if [ "$TAG_VERSION" != "$PLUGIN_VERSION" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match plugin.json version $PLUGIN_VERSION" >&2
-            exit 1
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            if [ "$TAG_VERSION" != "$PLUGIN_VERSION" ]; then
+              echo "Tag $GITHUB_REF_NAME does not match plugin.json version $PLUGIN_VERSION" >&2
+              exit 1
+            fi
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v$PLUGIN_VERSION" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create release
+      - name: Create release (creates the tag on dispatch)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" signoff.zip \
-            --title "$GITHUB_REF_NAME" --generate-notes
+          gh release create "${{ steps.ver.outputs.tag }}" signoff.zip \
+            --title "${{ steps.ver.outputs.tag }}" --generate-notes \
+            --target "$GITHUB_SHA"
