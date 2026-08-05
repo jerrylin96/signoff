@@ -24,10 +24,10 @@ breakers, notes concurrency handling).
 This repository doubles as a Claude Code **plugin marketplace**
 (`.claude-plugin/marketplace.json` at root; the repo root is the plugin).
 
-- **claude.ai (web / cloud sessions):** Directory → Plugins → **Add from a
-  repository** → `https://github.com/jerrylin96/signoff`, then install the
-  `signoff` plugin. The install is account-scoped and follows you into cloud
-  sessions on any project.
+- **claude.ai (web / cloud sessions):** Customize → Plugins → Add →
+  **Add marketplace** → "Add from a repository" → `jerrylin96/signoff`, then
+  install the `signoff` plugin. The install is account-scoped and follows you
+  into cloud sessions on any project. (Verified install path, 2026-08-05.)
 - **CLI / desktop:**
   ```text
   /plugin marketplace add jerrylin96/signoff
