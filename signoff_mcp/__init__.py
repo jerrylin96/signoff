@@ -14,6 +14,13 @@ from signoff_mcp.adapters import (
     TranscriptProvider,
     resolve_adapter,
 )
+from signoff_mcp.profile import (
+    ProfileOverrideError,
+    ProfileResolution,
+    detect_science_signals,
+    profile_block_digest,
+    resolve_profile,
+)
 from signoff_mcp.core import (
     CommitResult,
     GitRepo,
@@ -39,6 +46,8 @@ __all__ = [
     "GenericFileAdapter",
     "GitRepo",
     "PrepareState",
+    "ProfileOverrideError",
+    "ProfileResolution",
     "SignoffError",
     "SignoffIntegrityError",
     "SignoffPushError",
@@ -46,8 +55,11 @@ __all__ = [
     "SignoffTranscriptError",
     "TranscriptProvider",
     "commit",
+    "detect_science_signals",
     "parse_trailers",
     "prepare",
+    "profile_block_digest",
     "push_notes",
     "resolve_adapter",
+    "resolve_profile",
 ]
