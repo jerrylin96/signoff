@@ -24,10 +24,11 @@ breakers, notes concurrency handling).
 This repository doubles as a Claude Code **plugin marketplace**
 (`.claude-plugin/marketplace.json` at root; the repo root is the plugin).
 
-- **claude.ai (web / cloud sessions):** Customize → Plugins → Add →
-  **Add marketplace** → "Add from a repository" → `jerrylin96/signoff`, then
-  install the `signoff` plugin. The install is account-scoped and follows you
-  into cloud sessions on any project. (Verified install path, 2026-08-05.)
+- **claude.ai:** Customize → Plugins → Add → **Add marketplace** → "Add from
+  a repository" → `jerrylin96/signoff`, then install the `signoff` plugin
+  (path verified 2026-08-05). Note: cloud sessions register the plugin but do
+  not yet load its bundled skill — for claude.ai web/cloud sessions use the
+  skill zip upload below until they do.
 - **CLI / desktop:**
   ```text
   /plugin marketplace add jerrylin96/signoff
@@ -36,7 +37,7 @@ This repository doubles as a Claude Code **plugin marketplace**
 
 Then invoke with `/signoff` (modifiers: `--quick`, `--deep`).
 
-### Claude Code — skill zip upload (web fallback)
+### Claude Code — skill zip upload (operative channel for web/cloud)
 
 `cd skills && zip -r signoff.zip signoff`, then claude.ai → Customize →
 Skills → Add. See [HARNESSES.md](skills/signoff/HARNESSES.md).
