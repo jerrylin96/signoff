@@ -19,34 +19,23 @@ breakers, notes concurrency handling).
 
 ## Install
 
-### Claude Code — plugin (recommended, all surfaces)
+Pick the **one** row for your surface — no channel requires another:
 
-This repository doubles as a Claude Code **plugin marketplace**
-(`.claude-plugin/marketplace.json` at root; the repo root is the plugin).
-
-- **claude.ai:** Customize → Plugins → Add → **Add marketplace** → "Add from
-  a repository" → `jerrylin96/signoff`, then install the `signoff` plugin
-  (path verified 2026-08-05). Note: cloud sessions register the plugin but do
-  not yet load its bundled skill — for claude.ai web/cloud sessions use the
-  skill zip upload below until they do.
-- **CLI / desktop:**
-  ```text
-  /plugin marketplace add jerrylin96/signoff
-  /plugin install signoff@signoff
-  ```
+| Where you work | One-time action |
+|---|---|
+| **Claude Code CLI / desktop** | `/plugin marketplace add jerrylin96/signoff` then `/plugin install signoff@signoff` (or claude.ai → Customize → Plugins → Add → **Add marketplace** → "Add from a repository" → `jerrylin96/signoff`). Auto-updates from this repo. |
+| **claude.ai web / cloud sessions** | Download [`signoff.zip` from the latest release](https://github.com/jerrylin96/signoff/releases/latest/download/signoff.zip) (CI-built from the tagged tree), then claude.ai → Customize → Skills → Add. Snapshot install — re-download on new releases. |
+| **A team repo you control (cloud + local)** | Declare the plugin under [`enabledPlugins`](https://code.claude.com/docs/en/settings#enabledplugins) in that repo's `.claude/settings.json` — loads at session start from this marketplace and auto-updates. |
+| **Other harnesses (Antigravity, Codex, Goose, …)** | Copy the self-contained `skills/signoff/` folder into your harness's skill location and set the transcript adapter env vars — full matrix in [HARNESSES.md](skills/signoff/HARNESSES.md). |
 
 Then invoke with `/signoff` (modifiers: `--quick`, `--deep`).
 
-### Claude Code — skill zip upload (operative channel for web/cloud)
-
-`cd skills && zip -r signoff.zip signoff`, then claude.ai → Customize →
-Skills → Add. See [HARNESSES.md](skills/signoff/HARNESSES.md).
-
-### Other harnesses (Antigravity, Codex, Goose, …)
-
-Copy the self-contained `skills/signoff/` folder into your harness's skill
-location and set the transcript adapter env vars — full matrix in
-[HARNESSES.md](skills/signoff/HARNESSES.md).
+Why the split: this repo is a Claude Code **plugin marketplace**
+(`.claude-plugin/marketplace.json` at root; the repo root is the plugin), and
+the plugin is the auto-updating channel everywhere it reaches. As of
+2026-08-05, account-scoped plugin installs register in claude.ai cloud
+sessions but do not yet load the bundled skill there — hence the release-zip
+row for web/cloud, which retires once the platform closes that gap.
 
 ### MCP server (optional enforcement)
 
