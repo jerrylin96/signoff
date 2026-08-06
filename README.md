@@ -150,9 +150,22 @@ pip install "signoff-mcp @ git+https://github.com/jerrylin96/signoff"
 claude mcp add signoff -- signoff-mcp   # server must run with cwd = target repo
 ```
 
-Tools: `signoff_prepare`, `signoff_commit` (server-derived status,
-`ack_no_transcript` circuit breaker), `signoff_push_notes`
-(`cat_sort_uniq` notes merge). PyPI release pending.
+Tools: `signoff_prepare` (resolves the review range and also reports the
+active interview profile — source, ID, provenance digest — plus the
+science-guard signals detected in the diff), `signoff_commit`
+(server-derived status, `ack_no_transcript` circuit breaker),
+`signoff_push_notes` (`cat_sort_uniq` notes merge). PyPI release pending.
+
+## Status & roadmap
+
+**v0.2.0** ships the researcher-facing feature set described above —
+repo-local profiles, the default-on science guard, and profile provenance
+digests — verified end-to-end by scripted mechanics checks plus live
+interview runs: this repository signs off its own branches, and the
+resulting attestations are in its history (`git log --grep='SIGNOFF'`). Next up (tracked in
+[gsa-core.md §6](skills/signoff/specs/gsa-core.md)): a dedicated project
+website and cloud transcript storage, moving the tool from local-experimental
+to production-ready for a small but growing user base.
 
 ## Development
 
