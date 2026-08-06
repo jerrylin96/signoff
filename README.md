@@ -1,5 +1,7 @@
 # signoff — Git Signoff Attestation (GSA)
 
+[![attested by humans](https://github.com/jerrylin96/signoff/actions/workflows/signoff.yml/badge.svg)](https://github.com/jerrylin96/signoff/actions/workflows/signoff.yml)
+
 **Verify that a human actually understands an AI-assisted diff before it merges.**
 
 `/signoff` flips the usual review direction: instead of you interrogating the
@@ -126,6 +128,11 @@ Signoff-Agent: harness=claude-code/2.x model=... reasoning=... interview=standar
 
 Verification survives squash merges via the reviewed **tree SHA** and the
 notes mirror — lookup order in [gsa-core.md §5](skills/signoff/specs/gsa-core.md).
+
+**Show it: the badge.** A two-minute CI check turns attestations into a
+visible claim — PRs fail until the branch ends in a valid attestation, and
+your README carries an **attested by humans** badge (the one at the top of
+this file). Copy-paste install: [`verify/`](verify/README.md).
 
 The protocol is harness-, model-, and vendor-neutral. The skill is
 prompt-driven and self-contained; the optional `signoff-mcp` server adds

@@ -1,0 +1,19 @@
+name: attested by humans
+
+# Dogfood of the sharing-loop artifact (docs/productionization.md): the
+# composite action in verify/ gates PRs on a valid GSA attestation at the
+# branch head and backs the README badge on pushes to main.
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./verify
