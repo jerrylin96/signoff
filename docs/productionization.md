@@ -37,6 +37,13 @@ seamless navigation, fast loads, accessible.
   favicon), deployed by `.github/workflows/pages.yml`. Remaining user
   actions: Pages enablement if the workflow's auto-enable attempt lacks
   permission, then the domain purchase.
+- **Post-merge verification 2026-08-06:** the auto-enable attempt did lack
+  permission — the first `pages` run on `main` failed inside
+  `actions/configure-pages` ("Create Pages site failed: Resource not
+  accessible by integration"); deploy steps were skipped, so the failure is
+  isolated to enablement. Pages enablement (Settings → Pages → Source:
+  GitHub Actions) is now the confirmed blocking user action, followed by
+  the domain purchase.
 
 ## Storage, provider, database
 
@@ -71,7 +78,9 @@ append-only encrypted blobs + a small metadata index.
 ## Pricing & packaging
 
 **Decision: no numbers before discovery.** Pricing gates on structured
-conversations with prospective users, not intuition. What is already clear:
+conversations with prospective users, not intuition — the interview script
+for those conversations is [`docs/discovery-interview.md`](discovery-interview.md).
+What is already clear:
 
 - Buyer: engineering leadership / compliance. Value story: audit trail of
   human comprehension for AI-assisted code (EU AI Act, SOC 2, internal AI
@@ -162,6 +171,10 @@ donation vehicle. Milestones, in order:
 - Purchase custom domain; DNS to Pages.
 - Enable GitHub Pages in repo settings.
 - GitHub About sidebar text.
-- PyPI credentials when publishing signoff-mcp.
-- Discovery conversations with prospective users (agent can draft the
-  interview script).
+- Configure the PyPI trusted publisher for `signoff-mcp` (pypi.org →
+  Publishing → add pending publisher: owner `jerrylin96`, repository
+  `signoff`, workflow `pypi-publish.yml`, environment `pypi`) — the
+  `pypi-publish` workflow then publishes with no stored credentials.
+- Discovery conversations with prospective users — script:
+  [`docs/discovery-interview.md`](discovery-interview.md); keep filled
+  notes private, record only aggregated evidence back into this document.

@@ -1,0 +1,44 @@
+name: tag
+
+# Cloud sessions cannot push tags through the session git proxy (403), so
+# non-release tags are created here instead: dispatch with the tag name and
+# target commit SHA. Used for verifier action pins (verify-v1, verify-v2,
+# ...). Release tags (v*) are refused — the Release workflow cuts those and
+# enforces the plugin.json version match.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag name to create (e.g. verify-v1)
+        required: true
+        type: string
+      target:
+        description: "Commit SHA the tag points at (default: HEAD of the dispatched ref)"
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create and push tag
+        env:
+          TAG: ${{ inputs.tag }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          case "$TAG" in
+            v*) echo "Release tags (v*) are cut by the Release workflow." >&2; exit 1 ;;
+          esac
+          TARGET="${TARGET:-$GITHUB_SHA}"
+          git cat-file -e "$TARGET^{commit}"
+          git tag "$TAG" "$TARGET"
+          git push origin "refs/tags/$TAG"

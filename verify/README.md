@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # full history — attestations live in it
-      - uses: jerrylin96/signoff/verify@main
+      - uses: jerrylin96/signoff/verify@verify-v1
 ```
 
 **2.** Add the badge to your README:
@@ -43,6 +43,11 @@ Done. Pull requests now fail the check until the branch ends in a valid
 attestation (run `/signoff` before merging), and your default branch badge
 reads **attested by humans: passing**.
 
+The `verify-v1` tag is the stable pin for the action — it does not move.
+Backward-compatible fixes ship as `verify-v1.x` tags; a breaking change to
+the action's inputs or pass criteria would ship as `verify-v2`. Tracking
+`@main` works but couples your CI to this repository's development pace.
+
 ## What it checks
 
 | Event | Mode | Passes when |
@@ -53,7 +58,7 @@ reads **attested by humans: passing**.
 Override with inputs:
 
 ```yaml
-      - uses: jerrylin96/signoff/verify@main
+      - uses: jerrylin96/signoff/verify@verify-v1
         with:
           mode: history      # or: head
           target: main       # commit (head) or ref (history)

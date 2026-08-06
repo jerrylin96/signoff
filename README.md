@@ -161,7 +161,9 @@ Tools: `signoff_prepare` (resolves the review range and also reports the
 active interview profile — source, ID, provenance digest — plus the
 science-guard signals detected in the diff), `signoff_commit`
 (server-derived status, `ack_no_transcript` circuit breaker),
-`signoff_push_notes` (`cat_sort_uniq` notes merge). PyPI release pending.
+`signoff_push_notes` (`cat_sort_uniq` notes merge). PyPI release pending:
+the credential-free publish workflow (trusted publishing) is in place;
+it activates once the PyPI-side trusted-publisher configuration exists.
 
 ## Status & roadmap
 
