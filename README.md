@@ -160,9 +160,9 @@ science-guard signals detected in the diff), `signoff_commit`
 
 **v0.2.0** ships the researcher-facing feature set described above —
 repo-local profiles, the default-on science guard, and profile provenance
-digests — and every piece of it has been verified by live end-to-end runs:
-this repository signs off its own branches, and the resulting attestations
-are in its history (`git log --grep='SIGNOFF'`). Next up (tracked in
+digests — verified end-to-end by scripted mechanics checks plus live
+interview runs: this repository signs off its own branches, and the
+resulting attestations are in its history (`git log --grep='SIGNOFF'`). Next up (tracked in
 [gsa-core.md §6](skills/signoff/specs/gsa-core.md)): a dedicated project
 website and cloud transcript storage, moving the tool from local-experimental
 to production-ready for a small but growing user base.
