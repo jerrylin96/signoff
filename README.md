@@ -169,10 +169,16 @@ science-guard signals detected in the diff), `signoff_commit`
 repo-local profiles, the default-on science guard, and profile provenance
 digests — verified end-to-end by scripted mechanics checks plus live
 interview runs: this repository signs off its own branches, and the
-resulting attestations are in its history (`git log --grep='SIGNOFF'`). Next up (tracked in
-[gsa-core.md §6](skills/signoff/specs/gsa-core.md)): a dedicated project
-website and cloud transcript storage, moving the tool from local-experimental
-to production-ready for a small but growing user base.
+resulting attestations are in its history (`git log --grep='SIGNOFF'`).
+Phase 5 (tracked in [gsa-core.md §6](skills/signoff/specs/gsa-core.md))
+adds the production surface: a [project website](https://jerrylin96.github.io/signoff/),
+the [attested-by-humans badge + CI verifier](verify/README.md),
+automated `refs/notes/signoff` recovery, an open
+[spec license](LICENSE-SPEC) with [conformance vectors](conformance/README.md)
+for third-party implementations, and a reviewed
+[transcript-escrow spec](skills/signoff/specs/gsa-escrow.md) whose
+privacy baseline is user-owned storage with client-side encryption.
+Cloud escrow implementation and PyPI publish remain next.
 
 ## Development
 

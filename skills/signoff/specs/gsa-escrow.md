@@ -197,16 +197,17 @@ frameworks are the right category but the wrong stage — escrow has almost
 no workflow to orchestrate — recorded here as the alternative considered.
 
 **Cost model (required before any operated service ships).** Baseline
-assumptions to validate at review time: transcripts observed to date run
-~0.1–2 MB (the production attestation snapshot was 121 KB); assume ~5
-attestations/seat/week, ~50 KB after compression+encryption overhead is
-negligible relative to provider minimums.
+assumptions, to re-validate against real usage: observed snapshots run
+0.1–1.1 MB raw (121 KB and 1.06 MB in the two production attestations
+carrying byte counts); assume ~1 MB average escrowed payload (long agentic
+sessions compress well, so ciphertext ≈ a few hundred KB is likely —
+1 MB is the conservative bound) and ~5 attestations/seat/week.
 
-| Scale | Storage/mo (new) | Cumulative yr-1 | Infra cost/mo |
+| Scale | New storage/mo | Cumulative yr-1 | Infra cost/mo |
 |---|---|---|---|
-| 10 seats | ~1 GB | ~12 GB | < $1 (R2 $0.015/GB) |
-| 100 seats | ~10 GB | ~120 GB | ~$2–5 |
-| 1000 seats | ~100 GB | ~1.2 TB | ~$20–40 + Postgres ~$20 |
+| 10 seats | ~0.2 GB | ~2.5 GB | ≪ $1 (R2 $0.015/GB-mo) |
+| 100 seats | ~2 GB | ~25 GB | < $1 |
+| 1000 seats | ~20 GB | ~250 GB | ~$4 + managed Postgres ~$20 |
 
 Infra is never the cost driver; the fixed costs of operating at all —
 legal entity, terms of service, support capacity, incident response for
