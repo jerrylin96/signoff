@@ -81,6 +81,24 @@ convenience monetize a standard we author. Audience compounds linearly;
 standardization compounds structurally. Both matter; the plan prioritizes
 the second.
 
+### Seeding & the sharing loop
+
+Colleague seeding (free for academics, champions in industry) is the
+ignition strategy and is complementary to standardization — standards
+without users die. But seeding alone yields *linear* adoption bounded by
+personal social capital; the snowball requires a **visible artifact per
+use**, which GSA currently lacks (attestations live in git history where no
+third party encounters them). Two high-priority mechanisms:
+
+- **Badge + verifier check**: a README/PR badge ("attested by humans") and a
+  CI/GitHub check that verifies GSA trailers — every adopting repo becomes
+  an advertisement. Cheap; prioritize alongside the website.
+- **Citable wedge for academia**: a short paper/preprint defining GSA
+  (human-comprehension attestation for AI-assisted research code) makes the
+  standard citable; the endgame is journals/labs requiring attestations for
+  AI-assisted analysis code. Builds directly on Phase 3d's researcher
+  accessibility work.
+
 ### Path to an open standard
 
 Target end-state: GSA as a widely adopted open standard, conceivably donated
