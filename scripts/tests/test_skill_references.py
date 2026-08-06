@@ -332,6 +332,28 @@ def test_signoff_phase3c_interview_contract():
     assert "profiles/domain-science.md" in harnesses_content, "Missing domain-science profile reference in HARNESSES.md"
 
 
+def test_repo_local_dogfood_profile_is_valid():
+    """The repo's own .signoff/profile.md (Phase 3e dogfood) must be a valid file-sourced profile.
+
+    Validity per SKILL.md Section 1 step 5: exactly one delimited
+    INTERVIEW-PROFILE block containing a well-formed Profile-ID line. The ID
+    must be custom (distinct from shipped profile IDs) so a live run
+    demonstrably exercises repo-local resolution rather than a shipped block.
+    """
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    profile_path = os.path.join(root_dir, ".signoff/profile.md")
+    assert os.path.exists(profile_path), ".signoff/profile.md dogfood profile does not exist"
+    with open(profile_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    block = _extract_profile_block(content, ".signoff/profile.md")
+    pid = re.search(r"^Profile-ID:\s*([a-z0-9-]+)\s*$", block, re.MULTILINE)
+    assert pid, "Missing or malformed Profile-ID in .signoff/profile.md"
+    assert pid.group(1) not in {"software-general", "domain-science"}, (
+        ".signoff/profile.md must carry a custom Profile-ID, not a shipped one"
+    )
+
+
 def test_signoff_phase3d_research_accessibility_contract():
     """Verify Phase 3d: repo-local profile resolution, science-detection guard, profile provenance digest, and expanded science profile."""
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
