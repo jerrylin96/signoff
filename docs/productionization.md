@@ -99,12 +99,23 @@ third party encounters them). Two high-priority mechanisms:
   AI-assisted analysis code. Builds directly on Phase 3d's researcher
   accessibility work.
 
+Pipeline in motion (kept intentionally generic here — personal-network
+details stay out of a public repo): a conference abstract on signoff is
+submitted to AGU (audience matches the domain-science profile and this
+repo's earth/atmospheric example convention exactly); an ML-venue abstract
+(BayLearn) is under consideration; direct outreach to contacts across
+industry and research universities is planned. Each seeded adopter should
+land with the badge/verifier artifact available, so adoption is visible.
+
 ### Path to an open standard
 
 Target end-state: GSA as a widely adopted open standard, conceivably donated
-to a neutral foundation (Linux Foundation is the natural home — its OpenSSF
-umbrella already hosts the software-attestation ecosystem: in-toto, SLSA,
-Sigstore), applicable across domains and industries. Crucially, that
+to a neutral foundation, applicable across domains and industries. Candidate
+home, dual-track: the Linux Foundation's **Agentic AI Foundation (AAIF)** for
+governance — MCP itself was donated there, `signoff-mcp` is an MCP server,
+and human-accountability attestation for agentic coding is core AAIF
+territory — while the **OpenSSF** attestation ecosystem (in-toto, SLSA,
+Sigstore) remains the interop target rather than the home. Crucially, that
 ecosystem attests *builds, provenance, and signatures*; nothing in it attests
 **human comprehension** — GSA is complementary, not competing, and an
 **in-toto predicate type carrying GSA trailers** is a concrete candidate
