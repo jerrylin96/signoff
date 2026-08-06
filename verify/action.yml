@@ -1,0 +1,44 @@
+name: 'Verify Git Signoff Attestation'
+description: >-
+  CI check that verifies GSA human-comprehension attestations (/signoff)
+  against your repository. Backs an "attested by humans" badge.
+branding:
+  icon: 'user-check'
+  color: 'green'
+
+inputs:
+  mode:
+    description: >-
+      'head' (PR gate: the PR head commit must be attested), 'history'
+      (repo badge: the ref's history must carry valid attestations), or
+      'auto' (head on pull_request events, history otherwise).
+    default: 'auto'
+  target:
+    description: >-
+      Commit to verify (head mode) or ref to scan (history mode).
+      Defaults to the PR head commit on pull_request events, else HEAD.
+    default: ''
+  require:
+    description: 'History mode: minimum number of valid attestations.'
+    default: '1'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Verify attestations
+      shell: bash
+      run: |
+        MODE='${{ inputs.mode }}'
+        if [ "$MODE" = auto ]; then
+          [ "$GITHUB_EVENT_NAME" = pull_request ] && MODE=head || MODE=history
+        fi
+        TARGET='${{ inputs.target }}'
+        if [ -z "$TARGET" ]; then
+          if [ "$MODE" = head ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            TARGET='${{ github.event.pull_request.head.sha }}'
+          else
+            TARGET=HEAD
+          fi
+        fi
+        python3 "${GITHUB_ACTION_PATH}/verify_signoff.py" \
+          --mode "$MODE" --target "$TARGET" --require '${{ inputs.require }}'

@@ -1,5 +1,7 @@
 # signoff — Git Signoff Attestation (GSA)
 
+[![attested by humans](https://github.com/jerrylin96/signoff/actions/workflows/signoff.yml/badge.svg)](https://github.com/jerrylin96/signoff/actions/workflows/signoff.yml)
+
 **Verify that a human actually understands an AI-assisted diff before it merges.**
 
 `/signoff` flips the usual review direction: instead of you interrogating the
@@ -127,6 +129,11 @@ Signoff-Agent: harness=claude-code/2.x model=... reasoning=... interview=standar
 Verification survives squash merges via the reviewed **tree SHA** and the
 notes mirror — lookup order in [gsa-core.md §5](skills/signoff/specs/gsa-core.md).
 
+**Show it: the badge.** A two-minute CI check turns attestations into a
+visible claim — PRs fail until the branch ends in a valid attestation, and
+your README carries an **attested by humans** badge (the one at the top of
+this file). Copy-paste install: [`verify/`](verify/README.md).
+
 The protocol is harness-, model-, and vendor-neutral. The skill is
 prompt-driven and self-contained; the optional `signoff-mcp` server adds
 deterministic server-side enforcement (derived status, stale-state circuit
@@ -162,10 +169,16 @@ science-guard signals detected in the diff), `signoff_commit`
 repo-local profiles, the default-on science guard, and profile provenance
 digests — verified end-to-end by scripted mechanics checks plus live
 interview runs: this repository signs off its own branches, and the
-resulting attestations are in its history (`git log --grep='SIGNOFF'`). Next up (tracked in
-[gsa-core.md §6](skills/signoff/specs/gsa-core.md)): a dedicated project
-website and cloud transcript storage, moving the tool from local-experimental
-to production-ready for a small but growing user base.
+resulting attestations are in its history (`git log --grep='SIGNOFF'`).
+Phase 5 (tracked in [gsa-core.md §6](skills/signoff/specs/gsa-core.md))
+adds the production surface: a [project website](https://jerrylin96.github.io/signoff/),
+the [attested-by-humans badge + CI verifier](verify/README.md),
+automated `refs/notes/signoff` recovery, an open
+[spec license](LICENSE-SPEC) with [conformance vectors](conformance/README.md)
+for third-party implementations, and a reviewed
+[transcript-escrow spec](skills/signoff/specs/gsa-escrow.md) whose
+privacy baseline is user-owned storage with client-side encryption.
+Cloud escrow implementation and PyPI publish remain next.
 
 ## Development
 
@@ -181,4 +194,6 @@ manifests), and `signoff_mcp/tests/` (server mechanics).
 
 Extracted from [jerrylin96/dotgemini](https://github.com/jerrylin96/dotgemini)
 with full history via `git filter-repo`; dotgemini now consumes this repo via
-`git subtree`. MIT licensed.
+`git subtree`. Code is MIT licensed; the GSA specifications are licensed
+under the [Community Specification License 1.0](LICENSE-SPEC), so anyone can
+implement, verify, or extend the protocol.

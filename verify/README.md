@@ -1,0 +1,74 @@
+# attested by humans — GSA verifier check & badge
+
+A GitHub Actions check that verifies **Git Signoff Attestations** — the
+machine-parsable records `/signoff` writes after a human passes a Socratic
+comprehension interview about a diff — against your repository's history,
+plus a README badge that shows the check is green.
+
+Attestations are verified per the
+[GSA v1.0 spec](../skills/signoff/specs/gsa-core.md) §5.1 lookup order:
+git notes (`refs/notes/signoff`) on the commit and its tree, `[SIGNOFF *]`
+attestation commits in the log, and the tree-SHA fallback that survives
+squash merges.
+
+## Install (two minutes)
+
+**1.** Add `.github/workflows/signoff.yml` to your repository:
+
+```yaml
+name: attested by humans
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history — attestations live in it
+      - uses: jerrylin96/signoff/verify@main
+```
+
+**2.** Add the badge to your README:
+
+```markdown
+[![attested by humans](https://github.com/OWNER/REPO/actions/workflows/signoff.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/signoff.yml)
+```
+
+Done. Pull requests now fail the check until the branch ends in a valid
+attestation (run `/signoff` before merging), and your default branch badge
+reads **attested by humans: passing**.
+
+## What it checks
+
+| Event | Mode | Passes when |
+|---|---|---|
+| `pull_request` | `head` | The PR head commit is (or carries) a valid attestation: an attestation commit attesting its own parent — the normal shape of a branch ending in `/signoff` — or a notes/log/tree-SHA match for the head commit. |
+| `push` / anything else | `history` | The ref's history carries at least `require` (default 1) structurally valid attestations. |
+
+Override with inputs:
+
+```yaml
+      - uses: jerrylin96/signoff/verify@main
+        with:
+          mode: history      # or: head
+          target: main       # commit (head) or ref (history)
+          require: '1'       # history mode: minimum valid attestations
+```
+
+The verifier is a single stdlib-only Python file
+([`verify_signoff.py`](verify_signoff.py)) — no dependencies beyond git and
+Python 3.10+. Copy it into any CI system; GitHub Actions is just the
+packaged path.
+
+## What a green badge means — and doesn't
+
+Green means: a human answered a Socratic interview about this code in their
+own words, acknowledged its named trade-offs and risks, and accepted
+accountability — and the record of that survives in git, tamper-evident.
+It does **not** mean the code is correct; it means a named human
+understands it. That is exactly the claim, no more.

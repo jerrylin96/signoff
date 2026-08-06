@@ -32,6 +32,11 @@ seamless navigation, fast loads, accessible.
   it, moving to Cloudflare Pages or Vercel is an afternoon, not a migration.
 - **Highest-leverage credibility item: a custom domain** (user action —
   purchase + DNS). A github.io URL undercuts any design effort.
+- **Status 2026-08-06:** shipped as `site/index.html` — one self-contained
+  page (zero external requests: inline CSS, system font stacks, data-URI
+  favicon), deployed by `.github/workflows/pages.yml`. Remaining user
+  actions: Pages enablement if the workflow's auto-enable attempt lacks
+  permission, then the domain purchase.
 
 ## Storage, provider, database
 
@@ -40,6 +45,13 @@ storage (own bucket or private git ref) with client-side encryption as the
 null hypothesis.** Operating storage makes the project a data controller for
 whole dev conversations (secrets, proprietary code, non-consenting third
 parties) — that liability must be justified by demand, not assumed.
+
+**Status 2026-08-06: the gate-2 review is done** — the analysis below is
+now normative in `skills/signoff/specs/gsa-escrow.md` (privacy principles,
+user-owned baseline with age encryption, ciphertext-only operated registry,
+evidence gates, cost model). This section remains the strategy record; the
+spec governs implementations. Building escrow (Phase 5 gate 3) gates on the
+spec's evidence rules.
 
 If the null hypothesis is beaten, the workload is deliberately boring:
 append-only encrypted blobs + a small metadata index.
@@ -92,7 +104,10 @@ third party encounters them). Two high-priority mechanisms:
 
 - **Badge + verifier check**: a README/PR badge ("attested by humans") and a
   CI/GitHub check that verifies GSA trailers — every adopting repo becomes
-  an advertisement. Cheap; prioritize alongside the website.
+  an advertisement. **Shipped 2026-08-06** as `verify/` (stdlib-only
+  single-file verifier + composite action, two-minute install per
+  `verify/README.md`) and dogfooded by this repo's own badge. Every seeded
+  adopter should land with it from day one.
 - **Citable wedge for academia**: a short paper/preprint defining GSA
   (human-comprehension attestation for AI-assisted research code) makes the
   standard citable; the endgame is journals/labs requiring attestations for
@@ -124,15 +139,20 @@ donation vehicle. Milestones, in order:
 1. **Spec hygiene** (mostly done): versioned, self-contained,
    implementation-neutral core spec; keep tightening normative language
    (MUST/SHOULD) and separating normative from informative sections.
-2. **Spec licensing**: the code is MIT; the spec itself should carry an
-   explicit open specification license (e.g. Community Specification
-   License) before soliciting external implementations.
+2. **Spec licensing** — ✅ 2026-08-06: Community Specification License 1.0
+   in `LICENSE-SPEC`, declared by `gsa-core.md` and `gsa-escrow.md`; code
+   stays MIT.
 3. **Independent implementations**: the skill and signoff-mcp are two
    same-author implementations; the milestone is one *third-party* verifier
-   or producer. Publish a small conformance test-vector suite (the
-   production-attestation fixture is the seed) to make that cheap.
-4. **Ecosystem interop**: draft the in-toto predicate-type mapping; explore
-   CI checks / platform badges that verify GSA attestations.
+   or producer. The enabler shipped 2026-08-06 — `conformance/` publishes
+   the test-vector suite (mostly real attestations, reference verifier
+   pinned to it in CI); the milestone itself (an external implementation)
+   remains open and is now a seeding ask, not an engineering task.
+4. **Ecosystem interop**: the in-toto predicate-type mapping is drafted
+   (`specs/gsa-in-toto-predicate.md`, provisional namespace — registry
+   submission gates on milestone 3 evidence), and the CI check / badge
+   exists (`verify/`). Remaining: platform-native checks beyond Actions if
+   demand appears.
 5. **Governance & donation**: gates on evidence of external adoption
    (milestone 3), not before — donating an unused spec buys prestige for
    nobody. Name/trademark considerations belong to this milestone too.

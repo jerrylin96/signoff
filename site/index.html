@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>signoff — Git Signoff Attestation</title>
+<meta name="description" content="The AI wrote it. A human answers for it. signoff is a Socratic reverse-interview that verifies human comprehension of AI-assisted code, recorded as a tamper-evident attestation inside git.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%231d6a4d'/%3E%3Cpath d='M10 16.5l4 4 8-9' stroke='%23faf8f4' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --paper: #faf8f4;
+    --paper-2: #f3efe8;
+    --ink: #1c1a17;
+    --ink-2: #57534c;
+    --ink-3: #8a857c;
+    --line: rgba(28, 26, 23, .14);
+    --line-soft: rgba(28, 26, 23, .08);
+    --accent: #1d6a4d;
+    --accent-ink: #15503a;
+    --code-bg: #201e1b;
+    --code-ink: #e8e4dc;
+    --code-dim: #a39d92;
+    --code-accent: #7fc8a4;
+    --max: 68rem;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #171512;
+      --paper-2: #1f1c19;
+      --ink: #ece8e1;
+      --ink-2: #b3ada3;
+      --ink-3: #7d776d;
+      --line: rgba(236, 232, 225, .16);
+      --line-soft: rgba(236, 232, 225, .08);
+      --accent: #5fb98d;
+      --accent-ink: #7fc8a4;
+      --code-bg: #100f0d;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 1.0625rem/1.72 ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: var(--accent); color: var(--paper); }
+
+  a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { color: var(--accent-ink); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+  .skip {
+    position: absolute; left: -9999px; top: 0;
+    background: var(--ink); color: var(--paper); padding: .6rem 1rem; z-index: 10;
+  }
+  .skip:focus { left: 0; }
+
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 clamp(1.25rem, 4vw, 2.5rem); }
+
+  /* ---------- header ---------- */
+  header.site {
+    position: sticky; top: 0; z-index: 5;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  header.site .wrap {
+    display: flex; align-items: baseline; gap: 2rem;
+    padding-top: .9rem; padding-bottom: .9rem;
+  }
+  .wordmark {
+    font-weight: 650; letter-spacing: -.01em; text-decoration: none;
+    font-size: 1.06rem;
+  }
+  .wordmark .tick { color: var(--accent); }
+  nav.primary { margin-left: auto; display: flex; gap: 1.4rem; flex-wrap: wrap; }
+  nav.primary a {
+    font-size: .84rem; letter-spacing: .04em; text-decoration: none; color: var(--ink-2);
+  }
+  nav.primary a:hover { color: var(--ink); }
+  @media (max-width: 44rem) { nav.primary { display: none; } }
+  .gh { margin-left: auto; }
+  @media (min-width: 44.01rem) { .gh { margin-left: 0; } }
+  .gh a { font-size: .84rem; letter-spacing: .04em; color: var(--ink-2); text-decoration: none; border: 1px solid var(--line); padding: .34rem .8rem; border-radius: 999px; }
+  .gh a:hover { border-color: var(--ink-2); color: var(--ink); }
+
+  /* ---------- hero ---------- */
+  .hero { padding: clamp(4.5rem, 12vh, 8.5rem) 0 clamp(3.5rem, 9vh, 6.5rem); }
+  .eyebrow {
+    font-size: .78rem; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--accent-ink); font-weight: 600;
+  }
+  .hero h1 {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+    font-size: clamp(2.6rem, 7.2vw, 5.1rem);
+    line-height: 1.04; letter-spacing: -.015em; font-weight: 500;
+    max-width: 21ch; margin: 1.1rem 0 1.6rem;
+    text-wrap: balance;
+  }
+  .hero .lede {
+    max-width: 44ch; font-size: clamp(1.06rem, 1.6vw, 1.22rem);
+    line-height: 1.65; color: var(--ink-2);
+  }
+  .hero .lede strong { color: var(--ink); font-weight: 600; }
+  .cta { display: flex; gap: .9rem; margin-top: 2.2rem; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; text-decoration: none; font-size: .93rem; font-weight: 600;
+    padding: .72rem 1.35rem; border-radius: 999px; letter-spacing: .01em;
+  }
+  .btn.solid { background: var(--ink); color: var(--paper); }
+  .btn.solid:hover { background: var(--accent-ink); color: var(--paper); }
+  .btn.ghost { border: 1px solid var(--line); color: var(--ink); }
+  .btn.ghost:hover { border-color: var(--ink-2); }
+
+  .hero-grid {
+    display: grid; gap: clamp(2rem, 5vw, 4rem);
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    align-items: center;
+  }
+  @media (max-width: 56rem) { .hero-grid { grid-template-columns: minmax(0, 1fr); } }
+
+  /* attestation card */
+  .attest {
+    background: var(--code-bg); color: var(--code-ink);
+    border-radius: 10px; padding: 1.35rem 1.5rem;
+    font: .78rem/1.75 ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    overflow-x: auto; box-shadow: 0 24px 60px -30px rgba(20, 18, 14, .45);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+  .attest .k { color: var(--code-accent); }
+  .attest .dim { color: var(--code-dim); }
+  .attest .hd { color: var(--code-ink); font-weight: 700; }
+
+  /* ---------- sections ---------- */
+  section.block { border-top: 1px solid var(--line-soft); padding: clamp(3.5rem, 9vh, 6.5rem) 0; scroll-margin-top: 4.5rem; }
+  .sec {
+    display: grid; gap: clamp(1.5rem, 4vw, 3rem);
+    grid-template-columns: minmax(0, 3fr) minmax(0, 9fr);
+  }
+  @media (max-width: 56rem) { .sec { grid-template-columns: minmax(0, 1fr); } }
+  .sec .label { position: sticky; top: 5rem; align-self: start; }
+  @media (max-width: 56rem) { .sec .label { position: static; } }
+  .num {
+    font: 500 .8rem/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: var(--ink-3); letter-spacing: .08em;
+  }
+  .sec h2 {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+    font-size: clamp(1.7rem, 3.4vw, 2.5rem); line-height: 1.12; font-weight: 500;
+    letter-spacing: -.012em; margin-top: .55rem; text-wrap: balance;
+  }
+  .sec .body > p { max-width: 62ch; margin-bottom: 1.15rem; color: var(--ink-2); }
+  .sec .body > p strong { color: var(--ink); font-weight: 600; }
+  .sec .body > p:last-child { margin-bottom: 0; }
+
+  /* axes grid */
+  .axes { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); border-radius: 10px; overflow: hidden; margin: 1.8rem 0 .4rem; }
+  @media (max-width: 40rem) { .axes { grid-template-columns: minmax(0, 1fr); } }
+  .axes > div { background: var(--paper); padding: 1.3rem 1.4rem; }
+  .axes b { display: block; font-weight: 650; margin-bottom: .3rem; font-size: .98rem; }
+  .axes p { font-size: .92rem; color: var(--ink-2); line-height: 1.6; }
+  .axes .n { font: 500 .72rem/1 ui-monospace, Menlo, Consolas, monospace; color: var(--accent-ink); display: block; margin-bottom: .55rem; letter-spacing: .08em; }
+
+  /* two-up columns */
+  .duo { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: clamp(1.4rem, 3vw, 2.6rem); margin-top: 1.6rem; }
+  @media (max-width: 44rem) { .duo { grid-template-columns: minmax(0, 1fr); } }
+  .duo h3 { font-size: 1.02rem; font-weight: 650; margin-bottom: .5rem; }
+  .duo p { font-size: .95rem; color: var(--ink-2); line-height: 1.66; }
+
+  /* install rows */
+  .rows { border-top: 1px solid var(--line); margin-top: 1.6rem; }
+  .row { border-bottom: 1px solid var(--line-soft); padding: 1.5rem 0 1.7rem; }
+  .row h3 { font-size: 1.02rem; font-weight: 650; margin-bottom: .35rem; }
+  .row .note { font-size: .92rem; color: var(--ink-2); max-width: 62ch; margin-bottom: .9rem; }
+  .row .note a { color: inherit; }
+
+  pre.cmd {
+    background: var(--code-bg); color: var(--code-ink);
+    font: .82rem/1.7 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    padding: .95rem 1.1rem; border-radius: 8px; overflow-x: auto;
+    position: relative; border: 1px solid rgba(255,255,255,.06);
+  }
+  pre.cmd .c { color: var(--code-dim); }
+  .copy {
+    position: absolute; top: .5rem; right: .5rem; display: none;
+    font: 600 .7rem/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .05em;
+    color: var(--code-dim); background: transparent; border: 1px solid rgba(255,255,255,.18);
+    border-radius: 6px; padding: .32rem .55rem; cursor: pointer;
+  }
+  .copy:hover { color: var(--code-ink); border-color: rgba(255,255,255,.4); }
+  .js .copy { display: block; }
+
+  /* steps */
+  ol.steps { counter-reset: step; list-style: none; margin-top: 1.6rem; }
+  ol.steps > li { position: relative; padding: 0 0 1.6rem 3.1rem; }
+  ol.steps > li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 0; top: .05rem;
+    width: 2rem; height: 2rem; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--ink-2);
+    display: grid; place-items: center;
+    font: 600 .85rem/1 ui-monospace, Menlo, Consolas, monospace;
+  }
+  ol.steps > li:not(:last-child)::after {
+    content: ""; position: absolute; left: 1rem; top: 2.35rem; bottom: .25rem;
+    width: 1px; background: var(--line-soft);
+  }
+  ol.steps h3 { font-size: 1rem; font-weight: 650; margin-bottom: .3rem; }
+  ol.steps p { font-size: .95rem; color: var(--ink-2); max-width: 58ch; }
+  ol.steps pre.cmd { margin-top: .8rem; }
+  ol.steps code.inline, p code.inline, .note code.inline, td code.inline {
+    font: .85em ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background: var(--paper-2); border: 1px solid var(--line-soft);
+    padding: .1em .38em; border-radius: 5px; overflow-wrap: anywhere;
+  }
+
+  /* badge section */
+  .badge-strip { display: flex; align-items: center; gap: 1rem; margin: 1.4rem 0 1.6rem; flex-wrap: wrap; }
+  .badge-visual {
+    display: inline-flex; font: 600 .74rem/1 ui-sans-serif, system-ui, sans-serif;
+    border-radius: 4px; overflow: hidden; letter-spacing: .01em;
+    box-shadow: 0 1px 2px rgba(0,0,0,.18);
+  }
+  .badge-visual .l { background: #3a3d41; color: #fff; padding: .42rem .55rem; }
+  .badge-visual .r { background: #2ea44f; color: #fff; padding: .42rem .55rem; }
+  .badge-note { font-size: .9rem; color: var(--ink-2); }
+
+  /* footer */
+  footer.site { border-top: 1px solid var(--line); padding: 3.2rem 0 4rem; }
+  .foot { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0,1fr) minmax(0,1fr); gap: 2rem; }
+  @media (max-width: 44rem) { .foot { grid-template-columns: minmax(0, 1fr); } }
+  .foot h4 { font-size: .78rem; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); margin-bottom: .8rem; font-weight: 600; }
+  .foot ul { list-style: none; }
+  .foot li { margin-bottom: .45rem; font-size: .93rem; }
+  .foot a { color: var(--ink-2); text-decoration: none; }
+  .foot a:hover { color: var(--ink); text-decoration: underline; }
+  .foot .fine { font-size: .88rem; color: var(--ink-3); max-width: 40ch; line-height: 1.65; }
+  .foot .fine .tick { color: var(--accent); }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site">
+  <div class="wrap">
+    <a class="wordmark" href="#top">signoff<span class="tick">✓</span></a>
+    <nav class="primary" aria-label="Sections">
+      <a href="#what">What it is</a>
+      <a href="#attestation">The attestation</a>
+      <a href="#install">Install</a>
+      <a href="#customize">Customize</a>
+      <a href="#badge">Badge</a>
+    </nav>
+    <div class="gh"><a href="https://github.com/jerrylin96/signoff">GitHub&nbsp;↗</a></div>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ================= HERO ================= -->
+<div class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">Git Signoff Attestation</p>
+      <h1>The AI wrote it.<br>A human answers for&nbsp;it.</h1>
+      <p class="lede"><strong>signoff</strong> flips code review: before an AI-assisted
+      diff merges, the agent interviews <strong>you</strong> — then records who understood
+      what, when, at exactly which state of the code. Machine-parsable and
+      tamper-evident, inside your git history.</p>
+      <div class="cta">
+        <a class="btn solid" href="#install">Install in one step</a>
+        <a class="btn ghost" href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/specs/gsa-core.md">Read the protocol</a>
+      </div>
+    </div>
+    <div aria-label="Example attestation record">
+      <pre class="attest"><code><span class="hd">[SIGNOFF 979cb45]</span><span class="dim">: human comprehension
+and risk attestation</span>
+
+<span class="k">Signoff-Status:</span> VERIFIED_BY_HUMAN
+<span class="k">Signoff-Reviewed-Commit-SHA:</span> <span class="dim">979cb45…</span>
+<span class="k">Signoff-Reviewed-Tree-SHA:</span> <span class="dim">7ef0eac…</span>
+<span class="k">Signoff-Transcript-Digest:</span> <span class="dim">sha256:1675b6…</span>
+<span class="k">Signoff-Tradeoff:</span> <span class="dim">Notes ref recovery
+  deferred to CI</span>
+<span class="k">Signoff-Risk:</span> <span class="dim">Squash merges rely on
+  tree-SHA fallback</span>
+<span class="k">Signoff-Verified-By:</span> <span class="dim">you@lab.edu</span>
+<span class="k">Signoff-Agent:</span> <span class="dim">harness=claude-code/2.x
+  interview=standard/domain-science</span></code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 01 WHAT ================= -->
+<section class="block" id="what">
+  <div class="wrap sec">
+    <div class="label">
+      <span class="num">01</span>
+      <h2>A reverse interview, not a rubber stamp</h2>
+    </div>
+    <div class="body">
+      <p>Run <code class="inline">/signoff</code> from the branch you want to merge.
+      The agent reads the full diff, then asks you a short series of pointed
+      questions across four fixed axes. Vague answers don’t pass: hand-waving
+      pauses the signoff, the agent explains the mechanics, and re-probes with
+      a concrete scenario.</p>
+      <p>The goal is preventing <strong>cognitive surrender</strong> — merging AI
+      output nobody actually understands. Intentional trade-offs pass, once you
+      show you understand their boundaries and own their risks.</p>
+      <div class="axes">
+        <div><span class="n">AXIS 1</span><b>Mechanics &amp; intent</b><p>What changed, and why this design over the alternatives?</p></div>
+        <div><span class="n">AXIS 2</span><b>Trade-offs &amp; edge cases</b><p>What approximations were made — and are they intentional?</p></div>
+        <div><span class="n">AXIS 3</span><b>Boundaries &amp; failure loudness</b><p>Where does it break, and does it break loudly or silently?</p></div>
+        <div><span class="n">AXIS 4</span><b>Ownership</b><p>Do you explicitly accept responsibility for results and risks?</p></div>
+      </div>
+      <div class="duo">
+        <div>
+          <h3>For software engineers</h3>
+          <p>The default profile probes algorithmic complexity, data-structure
+          invariants, and API contract changes — the places engineering diffs
+          fail.</p>
+        </div>
+        <div>
+          <h3>For scientists &amp; researchers</h3>
+          <p>Research code rarely crashes; it produces
+          <em>plausible-but-invalid results</em>. A unit slip between hPa and Pa,
+          an emulator that quietly leaks energy, a trend that vanishes at higher
+          resolution. Any diff touching scientific computation automatically
+          triggers probes on units, numerical stability, statistical validity,
+          and reproducibility. signoff never claims the science is
+          <em>right</em> — it verifies that <strong>you</strong> know the
+          assumptions and validity regimes. That’s the part a human must own.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 02 ATTESTATION ================= -->
+<section class="block" id="attestation">
+  <div class="wrap sec">
+    <div class="label">
+      <span class="num">02</span>
+      <h2>A record that outlives the branch</h2>
+    </div>
+    <div class="body">
+      <p>When you pass, signoff writes an empty signed commit plus a mirrored
+      git note (<code class="inline">refs/notes/signoff</code>) carrying flat,
+      machine-parsable trailers: the reviewed commit and tree SHAs, the
+      acknowledged trade-offs and risks, a SHA-256 digest of the interview
+      transcript, your identity, and exactly which question set you were held
+      to.</p>
+      <p>Verification survives squash merges and branch deletion via the
+      reviewed <strong>tree SHA</strong> and the notes mirror. The protocol —
+      the <strong>Git Signoff Attestation (GSA)</strong> spec — is open,
+      harness-, model-, and vendor-neutral: any tool can produce or verify
+      attestations, and the record lives in your repository, not on anyone’s
+      server.</p>
+      <p>It does not claim unforgeable proof of cognition, and it does not
+      claim the code is correct. It claims something auditable: a named human
+      demonstrated comprehension and accepted accountability — and here is the
+      tamper-evident trail.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 03 INSTALL ================= -->
+<section class="block" id="install">
+  <div class="wrap sec">
+    <div class="label">
+      <span class="num">03</span>
+      <h2>Install: pick the one row for your surface</h2>
+    </div>
+    <div class="body">
+      <p>No channel requires another. Then, from the branch you want to merge,
+      type <code class="inline">/signoff</code> — <code class="inline">--deep</code>
+      for a stricter interview, <code class="inline">--quick</code> for small,
+      low-risk diffs.</p>
+      <div class="rows">
+        <div class="row">
+          <h3>Claude Code — CLI or desktop</h3>
+          <p class="note">Auto-updates from the marketplace repo.</p>
+          <pre class="cmd"><code>/plugin marketplace add jerrylin96/signoff
+/plugin install signoff@signoff</code></pre>
+        </div>
+        <div class="row">
+          <h3>claude.ai — web &amp; cloud sessions</h3>
+          <p class="note">Download the CI-built
+          <a href="https://github.com/jerrylin96/signoff/releases/latest/download/signoff.zip">latest
+          <code class="inline">signoff.zip</code></a>, then
+          claude.ai → Customize → Skills → Add. Snapshot install — re-download on
+          new releases.</p>
+        </div>
+        <div class="row">
+          <h3>A team repo you control — cloud + local</h3>
+          <p class="note">Declare the plugin in the repo’s
+          <code class="inline">.claude/settings.json</code>; it loads at session
+          start for every collaborator and auto-updates.</p>
+          <pre class="cmd"><code>{ "enabledPlugins": { "signoff@signoff": true } }</code></pre>
+        </div>
+        <div class="row">
+          <h3>Other harnesses — Antigravity, Codex, Goose, …</h3>
+          <p class="note">The skill is a self-contained folder of prompts: copy
+          <code class="inline">skills/signoff/</code> into your harness’s skill
+          location and set the transcript adapter env vars. Full matrix in
+          <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/HARNESSES.md">HARNESSES.md</a>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 04 CUSTOMIZE ================= -->
+<section class="block" id="customize">
+  <div class="wrap sec">
+    <div class="label">
+      <span class="num">04</span>
+      <h2>Make the interview yours</h2>
+    </div>
+    <div class="body">
+      <p>The four axes are fixed for everyone. What you customize is the
+      <strong>interview profile</strong> — a single delimited text block that
+      weights the questions toward your domain’s failure modes. Profiles can
+      add emphases but can never remove axes or lower pass criteria: a
+      customized interview is never a weaker one.</p>
+      <ol class="steps">
+        <li>
+          <h3>Create <code class="inline">.signoff/profile.md</code> in your repo</h3>
+          <p>The repository being reviewed carries its own question emphasis —
+          for every collaborator, on every install channel, surviving skill
+          updates.</p>
+        </li>
+        <li>
+          <h3>Start from a shipped profile</h3>
+          <p>Paste in
+          <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/profiles/domain-science.md"><code class="inline">domain-science</code></a>
+          (research code) or
+          <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/profiles/software-general.md"><code class="inline">software-general</code></a>
+          (classic engineering) — or rewrite the bullets to name
+          <em>your</em> failure modes: conservation properties of a new
+          parameterization, grid-resolution sensitivity of a reported trend,
+          leakage between reanalysis training and evaluation periods.</p>
+        </li>
+        <li>
+          <h3>Done — provenance is automatic</h3>
+          <p>Every attestation records which question set actually ran, with a
+          content digest for repo-supplied profiles — so a diluted profile is
+          always distinguishable from a shipped one.</p>
+          <pre class="cmd"><code><span class="c"># in the attestation trailer:</span>
+Signoff-Agent: … interview=standard/your-lab-id/sha256:5fd075753d5b</code></pre>
+        </li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 05 BADGE ================= -->
+<section class="block" id="badge">
+  <div class="wrap sec">
+    <div class="label">
+      <span class="num">05</span>
+      <h2>Show your work is answered&nbsp;for</h2>
+    </div>
+    <div class="body">
+      <p>A two-minute CI check verifies GSA attestations against your
+      repository’s history: pull requests fail until the branch ends in a valid
+      attestation, and your README carries the badge.</p>
+      <div class="badge-strip">
+        <span class="badge-visual" role="img" aria-label="Badge reading: attested by humans, passing">
+          <span class="l">attested by humans</span><span class="r">passing</span>
+        </span>
+        <span class="badge-note">Green means: a named human understood this
+        code and accepted accountability — no more, no less.</span>
+      </div>
+      <pre class="cmd"><code><span class="c"># .github/workflows/signoff.yml</span>
+name: attested by humans
+on:
+  pull_request:
+  push: { branches: [ main ] }
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: jerrylin96/signoff/verify@main</code></pre>
+      <p style="margin-top:1.1rem">The verifier is a single dependency-free
+      Python file — copy it into any CI system. Details:
+      <a href="https://github.com/jerrylin96/signoff/tree/main/verify">verify/</a>.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site">
+  <div class="wrap foot">
+    <div>
+      <p class="fine"><span class="wordmark">signoff<span class="tick">✓</span></span><br>
+      An open protocol for human comprehension attestation of AI-assisted
+      code. MIT licensed. The spec is open and implementation-neutral;
+      hosted conveniences never gate creating or verifying an
+      attestation.</p>
+    </div>
+    <div>
+      <h4>Protocol</h4>
+      <ul>
+        <li><a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/specs/gsa-core.md">GSA core spec</a></li>
+        <li><a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/HARNESSES.md">Harness guide</a></li>
+        <li><a href="https://github.com/jerrylin96/signoff/tree/main/verify">CI verifier &amp; badge</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Project</h4>
+      <ul>
+        <li><a href="https://github.com/jerrylin96/signoff">GitHub repository</a></li>
+        <li><a href="https://github.com/jerrylin96/signoff/releases/latest">Latest release</a></li>
+        <li><a href="https://github.com/jerrylin96/signoff/blob/main/README.md">README</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.body.classList.add('js');
+  document.querySelectorAll('pre.cmd').forEach(function (pre) {
+    var btn = document.createElement('button');
+    btn.className = 'copy';
+    btn.type = 'button';
+    btn.textContent = 'COPY';
+    btn.setAttribute('aria-label', 'Copy to clipboard');
+    btn.addEventListener('click', function () {
+      var text = Array.prototype.filter.call(
+        pre.querySelector('code').childNodes,
+        function (n) { return !(n.classList && n.classList.contains('c')); }
+      ).map(function (n) { return n.textContent; }).join('').replace(/^\n+/, '');
+      navigator.clipboard.writeText(text).then(function () {
+        btn.textContent = 'COPIED';
+        setTimeout(function () { btn.textContent = 'COPY'; }, 1600);
+      });
+    });
+    pre.appendChild(btn);
+  });
+</script>
+</body>
+</html>
