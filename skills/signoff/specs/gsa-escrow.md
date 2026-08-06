@@ -4,6 +4,7 @@
 **Status:** Reviewed Draft (Phase 5 Gate 2) — normative for future escrow implementations; **nothing in this document is built yet**, and the GSA core protocol ([gsa-core.md](gsa-core.md)) remains complete without it.  
 **Canonical Spec Location:** `skills/signoff/specs/gsa-escrow.md`  
 **Supersedes:** `gsa-cloud-concept.md` (removed per its own lifecycle note)  
+**License:** [Community Specification License 1.0](https://github.com/jerrylin96/signoff/blob/main/LICENSE-SPEC) (SPDX: `Community-Spec-1.0`)  
 **Strategy record:** decisions and evidence gates behind this design live in `docs/productionization.md`.
 
 ---

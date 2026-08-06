@@ -4,6 +4,7 @@
 **Status:** Draft / Pending Review (Stage 1a)  
 **Target Scope:** `signoff` skill portability, MCP Server, Harness Adapters, Git Notes Attestation, and Open Commit Protocol Core  
 **Canonical Spec Location:** `skills/signoff/specs/gsa-core.md`  
+**License:** This specification is licensed under the [Community Specification License 1.0](https://github.com/jerrylin96/signoff/blob/main/LICENSE-SPEC) (SPDX: `Community-Spec-1.0`); the reference implementations in this repository remain MIT.  
 
 ---
 
