@@ -157,6 +157,22 @@ donation vehicle. Milestones, in order:
    the test-vector suite (mostly real attestations, reference verifier
    pinned to it in CI); the milestone itself (an external implementation)
    remains open and is now a seeding ask, not an engineering task.
+   **First divergent implementation observed 2026-08-08:** dotgemini's
+   independently authored `Signoff Verification Gate` (its
+   `.github/workflows/signoff.yml`, PR #62) re-implements §5.1 verification
+   in shell and diverged from the reference verifier in exactly the ways a
+   conformance suite exists to catch. Two of its checks were *stricter* and
+   correct — it required attestation commits to be empty (parent tree ==
+   head tree, closing a real reference-verifier false positive where a
+   non-empty "attestation" commit could smuggle unreviewed changes past
+   head mode) and enforced `Signoff-Spec-Version: 1.0` as a value — both
+   adopted into `verify/verify_signoff.py` with tests and a new conformance
+   vector. One of its checks is *over-strict*: an exactly-one-occurrence
+   rule per mandatory trailer, which rejects `cat_sort_uniq`-merged note
+   blobs that §2.5's own notes flow produces (our
+   `valid-note-cat-sort-uniq.txt` vector would fail its gate). Standing
+   seeding ask: run any independent gate against `conformance/` before
+   trusting it.
 4. **Ecosystem interop**: the in-toto predicate-type mapping is drafted
    (`specs/gsa-in-toto-predicate.md`, provisional namespace — registry
    submission gates on milestone 3 evidence), and the CI check / badge

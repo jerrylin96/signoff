@@ -52,7 +52,7 @@ the action's inputs or pass criteria would ship as `verify-v2`. Tracking
 
 | Event | Mode | Passes when |
 |---|---|---|
-| `pull_request` | `head` | The PR head commit is (or carries) a valid attestation: an attestation commit attesting its own parent — the normal shape of a branch ending in `/signoff` — or a notes/log/tree-SHA match for the head commit. |
+| `pull_request` | `head` | The PR head commit is (or carries) a valid attestation: an **empty** attestation commit attesting its own parent's commit and tree — the normal shape of a branch ending in `/signoff`; a non-empty attestation commit fails, so trailers cannot smuggle unreviewed changes — or a notes/log/tree-SHA match for the head commit. |
 | `push` / anything else | `history` | The ref's history carries at least `require` (default 1) structurally valid attestations. |
 
 Override with inputs:
@@ -77,3 +77,12 @@ own words, acknowledged its named trade-offs and risks, and accepted
 accountability — and the record of that survives in git, tamper-evident.
 It does **not** mean the code is correct; it means a named human
 understands it. That is exactly the claim, no more.
+
+Two enforcement caveats. First, the check is advisory until you add a
+branch protection rule (or repository ruleset) on your default branch that
+requires it — without that, a red check does not block the merge button.
+Second, unsigned trailers are self-attested: they verify that a
+structurally valid GSA record binds to this exact code state, not who wrote
+it. Where independent identity assurance matters, combine the gate with
+signed attestation commits (`git commit -S`, GSA §2.4) and your platform's
+signature verification.
