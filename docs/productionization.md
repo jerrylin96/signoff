@@ -181,7 +181,18 @@ donation vehicle. Milestones, in order:
    risk — the pin should extract the validator from the workflow), and its
    validator never requires `Signoff-Verified-By`; the suite now carries
    `invalid-missing-verified-by.txt` to make that gap fail loudly on their
-   next subtree resync.
+   next subtree resync. A third round surfaced a genuine spec ambiguity —
+   trailer-key case sensitivity, on which the two implementations reached
+   opposite verdicts — resolved normatively in gsa-core.md §2.3 and pinned
+   by `invalid-lowercase-keys.txt`. Convergence confirmed 2026-08-08: the
+   dotgemini validator, run against the full 10-vector suite (including
+   three vectors it had never seen), agrees with the reference verifier on
+   every verdict. Net effect of the exchange: rigor moved in both
+   directions (their empty-commit and spec-version checks hardened the
+   reference verifier; our cat_sort_uniq and required-trailer vectors
+   hardened their gate) and the spec itself got tighter — the
+   standardization flywheel working as designed, on its first external
+   consumer.
 4. **Ecosystem interop**: the in-toto predicate-type mapping is drafted
    (`specs/gsa-in-toto-predicate.md`, provisional namespace — registry
    submission gates on milestone 3 evidence), and the CI check / badge
