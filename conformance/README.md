@@ -17,6 +17,9 @@ synthetic examples:
 | `valid-no-transcript-digest.txt` | synthetic | downgraded status with `unavailable` digest/bytes (§2.2) |
 | `valid-note-cat-sort-uniq.txt` | the two production payloads merged via `cat_sort_uniq` (§2.5) | repeated-key-aware parsing of merged note blobs |
 | `invalid-missing-spec-version.txt` | real pre-spec attestation `[SIGNOFF 1fb5e3b]` | missing required trailer |
+| `invalid-wrong-spec-version.txt` | synthetic | spec-version value outside 1.0 (declared-version enforcement) |
+| `invalid-missing-verified-by.txt` | synthetic | missing `Signoff-Verified-By` — the accountability field is required (§2.1) |
+| `invalid-lowercase-keys.txt` | synthetic | trailer keys are case-sensitive (§2.3) — case-variant keys are not the mandatory trailers |
 | `invalid-malformed-tree-sha.txt` | real attestation `[SIGNOFF 2c1c0b7]` | non-40-hex SHA rejection |
 | `invalid-status.txt` | synthetic | status outside the §2.2 enum |
 

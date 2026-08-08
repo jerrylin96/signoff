@@ -11,8 +11,10 @@ Two modes:
 
   head     Verify that a specific commit (default HEAD) is attested — the
            PR-gate check. A commit that is itself an attestation commit
-           passes when it attests its own parent (the normal shape of a
-           branch ending in /signoff).
+           passes when it is empty (same tree as its parent) and attests
+           its own parent's commit and tree (the normal shape of a branch
+           ending in /signoff); a non-empty attestation commit fails, so
+           trailers cannot smuggle unreviewed changes past the gate.
   history  Verify that a ref's history carries valid attestations — the
            repo-badge check. Passes when at least --require valid
            attestations (default 1) are found.
@@ -63,6 +65,9 @@ def validate(trailers):
     for key in REQUIRED_TRAILERS:
         if key not in trailers:
             problems.append(f"missing {key}")
+    for version in trailers.get("Signoff-Spec-Version", []):
+        if version != "1.0":
+            problems.append(f"unsupported Signoff-Spec-Version {version!r}")
     for status in trailers.get("Signoff-Status", []):
         if status not in VALID_STATUSES:
             problems.append(f"invalid Signoff-Status {status!r}")
@@ -110,8 +115,18 @@ def check_head(repo, target):
         trailers = parse_trailers(message)
         problems = validate(trailers)
         parent = git(repo, "rev-parse", f"{commit}~1", check=False).stdout.strip()
+        parent_tree = ""
+        if parent:
+            parent_tree = git(repo, "rev-parse", f"{parent}^{{tree}}", check=False).stdout.strip()
         if trailers.get("Signoff-Reviewed-Commit-SHA", [None])[0] != parent:
             problems.append("attestation commit does not attest its parent")
+        if not parent_tree or tree != parent_tree:
+            problems.append(
+                "attestation commit is not empty (its tree differs from its parent's — "
+                "it smuggles changes the attestation does not cover)"
+            )
+        if trailers.get("Signoff-Reviewed-Tree-SHA", [None])[0] != parent_tree:
+            problems.append("attestation does not attest its parent's tree")
         if problems:
             return False, [f"FAIL: {target} is a malformed attestation commit: "
                            + "; ".join(problems)]

@@ -78,6 +78,37 @@ def test_head_mode_fails_when_attestation_does_not_attest_parent(repo):
     assert "does not attest its parent" in lines[0]
 
 
+def test_head_mode_fails_on_non_empty_attestation_commit(repo):
+    # Valid trailers attesting the parent, but the commit also smuggles a
+    # file change the interview never covered — must fail the PR gate.
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    (repo / "smuggled.txt").write_text("unreviewed change")
+    git(repo, "add", "smuggled.txt")
+    git(repo, "commit", "-q", "-m", attestation_message(reviewed, tree))
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert not ok
+    assert "not empty" in lines[0]
+
+
+def test_head_mode_fails_when_attestation_tree_mismatches_parent(repo):
+    # Empty commit attesting the right parent commit but the wrong tree.
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    attest_head(repo, attestation_message(reviewed, "1" * 40))
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert not ok
+    assert "parent's tree" in lines[0]
+
+
+def test_head_mode_fails_on_unsupported_spec_version(repo):
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    attest_head(repo, attestation_message(reviewed, tree, spec_version="2.0"))
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert not ok
+    assert "Signoff-Spec-Version" in lines[0]
+
+
 def test_head_mode_tree_fallback_via_note_after_squash(repo, tmp_path):
     reviewed, tree = attest_head(repo)
     payload = attestation_message(reviewed, tree)

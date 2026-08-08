@@ -37,6 +37,13 @@ seamless navigation, fast loads, accessible.
   favicon), deployed by `.github/workflows/pages.yml`. Remaining user
   actions: Pages enablement if the workflow's auto-enable attempt lacks
   permission, then the domain purchase.
+- **Post-merge verification 2026-08-06:** the auto-enable attempt did lack
+  permission — the first `pages` run on `main` failed inside
+  `actions/configure-pages` ("Create Pages site failed: Resource not
+  accessible by integration"); deploy steps were skipped, so the failure is
+  isolated to enablement. Pages enablement (Settings → Pages → Source:
+  GitHub Actions) is now the confirmed blocking user action, followed by
+  the domain purchase.
 
 ## Storage, provider, database
 
@@ -71,7 +78,9 @@ append-only encrypted blobs + a small metadata index.
 ## Pricing & packaging
 
 **Decision: no numbers before discovery.** Pricing gates on structured
-conversations with prospective users, not intuition. What is already clear:
+conversations with prospective users, not intuition — the interview script
+for those conversations is [`docs/discovery-interview.md`](discovery-interview.md).
+What is already clear:
 
 - Buyer: engineering leadership / compliance. Value story: audit trail of
   human comprehension for AI-assisted code (EU AI Act, SOC 2, internal AI
@@ -148,6 +157,42 @@ donation vehicle. Milestones, in order:
    the test-vector suite (mostly real attestations, reference verifier
    pinned to it in CI); the milestone itself (an external implementation)
    remains open and is now a seeding ask, not an engineering task.
+   **First divergent implementation observed 2026-08-08:** dotgemini's
+   independently authored `Signoff Verification Gate` (its
+   `.github/workflows/signoff.yml`, PR #62) re-implements §5.1 verification
+   in shell and diverged from the reference verifier in exactly the ways a
+   conformance suite exists to catch. Two of its checks were *stricter* and
+   correct — it required attestation commits to be empty (parent tree ==
+   head tree, closing a real reference-verifier false positive where a
+   non-empty "attestation" commit could smuggle unreviewed changes past
+   head mode) and enforced `Signoff-Spec-Version: 1.0` as a value — both
+   adopted into `verify/verify_signoff.py` with tests and a new conformance
+   vector. One of its checks is *over-strict*: an exactly-one-occurrence
+   rule per mandatory trailer, which rejects `cat_sort_uniq`-merged note
+   blobs that §2.5's own notes flow produces (our
+   `valid-note-cat-sort-uniq.txt` vector would fail its gate). Standing
+   seeding ask: run any independent gate against `conformance/` before
+   trusting it. **Same-day follow-up:** dotgemini's alignment branch
+   (`gemini/cat-sort-uniq-conformance-gate`) fixed the note-check
+   divergence, adopted `conformance/` as a synced subtree, and added a
+   vector-pinning test — the first external consumer of the suite.
+   Review of that branch surfaced the next round: its conformance test
+   validates a hand-copied duplicate of the workflow's validator (drift
+   risk — the pin should extract the validator from the workflow), and its
+   validator never requires `Signoff-Verified-By`; the suite now carries
+   `invalid-missing-verified-by.txt` to make that gap fail loudly on their
+   next subtree resync. A third round surfaced a genuine spec ambiguity —
+   trailer-key case sensitivity, on which the two implementations reached
+   opposite verdicts — resolved normatively in gsa-core.md §2.3 and pinned
+   by `invalid-lowercase-keys.txt`. Convergence confirmed 2026-08-08: the
+   dotgemini validator, run against the full 10-vector suite (including
+   three vectors it had never seen), agrees with the reference verifier on
+   every verdict. Net effect of the exchange: rigor moved in both
+   directions (their empty-commit and spec-version checks hardened the
+   reference verifier; our cat_sort_uniq and required-trailer vectors
+   hardened their gate) and the spec itself got tighter — the
+   standardization flywheel working as designed, on its first external
+   consumer.
 4. **Ecosystem interop**: the in-toto predicate-type mapping is drafted
    (`specs/gsa-in-toto-predicate.md`, provisional namespace — registry
    submission gates on milestone 3 evidence), and the CI check / badge
@@ -162,6 +207,10 @@ donation vehicle. Milestones, in order:
 - Purchase custom domain; DNS to Pages.
 - Enable GitHub Pages in repo settings.
 - GitHub About sidebar text.
-- PyPI credentials when publishing signoff-mcp.
-- Discovery conversations with prospective users (agent can draft the
-  interview script).
+- Configure the PyPI trusted publisher for `signoff-mcp` (pypi.org →
+  Publishing → add pending publisher: owner `jerrylin96`, repository
+  `signoff`, workflow `pypi-publish.yml`, environment `pypi`) — the
+  `pypi-publish` workflow then publishes with no stored credentials.
+- Discovery conversations with prospective users — script:
+  [`docs/discovery-interview.md`](discovery-interview.md); keep filled
+  notes private, record only aggregated evidence back into this document.

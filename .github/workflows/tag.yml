@@ -1,0 +1,65 @@
+name: tag
+
+# Cloud sessions cannot push tags through the session git proxy (403), and
+# workflow_dispatch only reaches workflows that exist on the default branch,
+# so non-release tags are created here two ways: (a) every push to main
+# ensures the pin tags listed in PINS exist (create-if-missing at that
+# commit — how verify-v1 self-creates when the branch adding this file
+# merges), and (b) manual dispatch with an explicit tag name and target for
+# future pins. Existing tags are never moved. Release tags (v*) are
+# refused — the Release workflow cuts those and enforces the plugin.json
+# version match.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag name to create (e.g. verify-v2)
+        required: true
+        type: string
+      target:
+        description: "Commit SHA the tag points at (default: HEAD of the dispatched ref)"
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    env:
+      PINS: verify-v1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create and push tags
+        env:
+          TAG: ${{ inputs.tag }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          ensure_tag() {
+            local tag="$1" target="$2"
+            case "$tag" in
+              v*) echo "Release tags (v*) are cut by the Release workflow." >&2; exit 1 ;;
+            esac
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+              echo "Tag $tag already exists on origin; leaving it untouched."
+              return 0
+            fi
+            git cat-file -e "$target^{commit}"
+            git tag "$tag" "$target"
+            git push origin "refs/tags/$tag"
+          }
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            ensure_tag "$TAG" "${TARGET:-$GITHUB_SHA}"
+          else
+            for pin in $PINS; do
+              ensure_tag "$pin" "$GITHUB_SHA"
+            done
+          fi
