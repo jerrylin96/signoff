@@ -172,7 +172,16 @@ donation vehicle. Milestones, in order:
    blobs that §2.5's own notes flow produces (our
    `valid-note-cat-sort-uniq.txt` vector would fail its gate). Standing
    seeding ask: run any independent gate against `conformance/` before
-   trusting it.
+   trusting it. **Same-day follow-up:** dotgemini's alignment branch
+   (`gemini/cat-sort-uniq-conformance-gate`) fixed the note-check
+   divergence, adopted `conformance/` as a synced subtree, and added a
+   vector-pinning test — the first external consumer of the suite.
+   Review of that branch surfaced the next round: its conformance test
+   validates a hand-copied duplicate of the workflow's validator (drift
+   risk — the pin should extract the validator from the workflow), and its
+   validator never requires `Signoff-Verified-By`; the suite now carries
+   `invalid-missing-verified-by.txt` to make that gap fail loudly on their
+   next subtree resync.
 4. **Ecosystem interop**: the in-toto predicate-type mapping is drafted
    (`specs/gsa-in-toto-predicate.md`, provisional namespace — registry
    submission gates on milestone 3 evidence), and the CI check / badge
