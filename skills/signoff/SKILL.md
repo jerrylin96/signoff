@@ -56,18 +56,27 @@ Pace: 1-2 probes per turn. Select the interview intensity level before the first
 3. **Boundary Conditions & Failure Loudness:** Define input/operating limits where code fails/drifts. Ensure failures happen **loudly** (explicit assertions/guards) in dev/test, not silently in production.
 4. **Ownership:** Confirm explicit accountability for results and risks.
 
-#### Interview Intensity Levels
+#### Interview Intensity Levels & Adaptive Classification Matrix
 
-| Level | Modifier | Probes | Coverage | Pass criteria |
+When `/signoff` is run without an explicit intensity flag (`--quick` / `--deep`), the agent dynamically inspects the range diff to auto-select the Adaptive Interview Intensity level based on semantic impact and blast radius:
+
+| Tier | Level | Target Churn & Profile | Heuristic Detection Signals | Probe Structure & Pass Criteria |
 |---|---|---|---|---|
-| **cursory** | `--quick` | 2 (one turn) | One merged Mechanics & Intent probe; one Ownership probe including the single riskiest consequence | User states in their own words what changed, why, and the riskiest consequence, and explicitly accepts ownership. Any uncertainty or vagueness escalates to standard. |
-| **standard** | *(default)* | 4-6 | At least one probe per universal axis | No axis left with an unresolved vague or uncertain answer after the remediation loop; all silent-failure findings guarded before signoff. |
-| **skeptical** | `--deep` | 8+ | At least two probes per universal axis, including at least two prediction challenges | User predicts concrete behavior (given input → expected output/failure) **before** the agent reveals it; a wrong prediction triggers explanation and a fresh scenario that must pass. Restating the diff does not pass — answers must demonstrate reasoning not present verbatim in the diff. |
+| **Tier 0** | **cursory** | Trivial / Chore (<50 LoC, <=2 files) | **ALL must hold:**<br>• Pure documentation (`*.md`), comments, formatting/lint, or pure type annotations.<br>• Zero high-impact or science triggers touched. | 1–2 probes (one turn): One merged Mechanics & Intent probe; one Ownership probe including the single riskiest consequence. User states in own words what changed, why, and accepts ownership. Any uncertainty or vagueness auto-escalates to Tier 1 (`standard`) with `@skill:explain-diff`. |
+| **Tier 1** | **standard** | *(default feature profile)* (<=200 LoC, <=5 files) | **Default feature profile:**<br>• Internal business logic, helper functions, non-breaking refactors.<br>• Pure documentation / comment changes >200 LoC or >5 files (capped at Tier 1).<br>• Zero Tier 2 high-impact triggers present. | 3–5 probes (2–3 turns): At least one probe per universal axis. No axis left with an unresolved vague or uncertain answer after the remediation loop; all silent-failure findings guarded before signoff. Unresolved issues escalate to Tier 2 (`skeptical`). |
+| **Tier 2** | **skeptical** | High-Impact / Critical Path / Large Code Churn (>200 LoC or >5 files) | **ANY of the following triggers:**<br>1. *Security & Auth:* `auth/`, `crypto/`, `permissions/`, secret/token handling.<br>2. *Data Integrity & Schema:* `migrations/`, `schema.sql`, `ALTER TABLE`, ORM models.<br>3. *Scientific / Numerical Computation:* scientific stack (`numpy`, `scipy`, `jax`, `torch`), notebooks (`.ipynb`), RNG seeding, numerical solvers/integrators, dataset/model-config files (`netCDF`, `GRIB`, `zarr`).<br>4. *Public API & Contracts:* protobufs (`*.proto`), OpenAPI specs, exported SDK public interface contracts.<br>5. *Blast Radius:* >5 files or >200 lines of non-boilerplate executable code. | 6–8+ probes + prediction challenges: At least two probes per universal axis, including at least two concrete input $\to$ output/failure behavioral prediction tests before revealing diff mechanics. Wrong prediction triggers explanation and a fresh scenario. |
 
-Guards:
-- **Cursory eligibility:** The agent MUST refuse cursory and run standard — stating the escalation — when the diff is large or high-risk: more than 5 files or 200 changed lines, schema/API/data-integrity changes, or areas flagged by the active interview profile.
-- **Science-detection escalation (additive, on by default):** if the range diff touches scientific computation — scientific-stack imports (e.g. numpy, scipy, jax, torch, astropy, pandas, xarray), notebooks (`.ipynb`), RNG seeding, physical constants or unit-bearing quantities, numerical solvers/integrators, or dataset/model-config files (e.g. netCDF, GRIB, zarr) — the agent MUST announce the escalation and apply the domain emphases of [profiles/domain-science.md](profiles/domain-science.md) additively on top of the active profile: at least one science-emphasis probe at standard intensity, at least two at skeptical. Additive only — it never replaces the active profile, removes axes, or lowers pass criteria. A science-flagged diff counts as "areas flagged by the active interview profile" for cursory eligibility, so cursory MUST be refused.
-- **One-way escalation:** Escalate whenever pass criteria are not met; never de-escalate within a session.
+Guards & Precedence:
+- **Modifier Precedence & Safety Clamps:**
+  - Bare `/signoff`: Dynamically auto-classifies into Tier 0 (`cursory`), Tier 1 (`standard`), or Tier 2 (`skeptical`).
+  - `/signoff --deep`: Unconditionally forces Tier 2 (`skeptical`) regardless of diff size or content.
+  - `/signoff --quick`: Requests Tier 0 (`cursory`). Permitted only when zero Tier 2 triggers are present. **One-way safety clamp:** --quick is strictly blocked and the agent MUST refuse cursory (auto-escalating to Tier 1 or Tier 2) when any high-impact trigger is present (e.g. `auth/`, `crypto/`, `permissions/`, `migrations/`, `schema.sql`, `ALTER TABLE`, `proto`, `OpenAPI`, scientific computation, or >5 files or >200 lines).
+- **Graduated One-Way Escalation:**
+  - Tier 0 failure/vagueness $\to$ escalates to Tier 1 (`standard`) with `@skill:explain-diff`.
+  - Tier 1 failure/unresolved edge case $\to$ escalates to Tier 2 (`skeptical`) with prediction challenges.
+  - Never de-escalate within a session.
+- **Science-detection escalation (additive, on by default):** if the range diff touches scientific computation — scientific-stack imports (e.g. numpy, scipy, jax, torch, astropy, pandas, xarray), notebooks (`.ipynb`), RNG seeding, physical constants or unit-bearing quantities, numerical solvers/integrators, or dataset/model-config files (e.g. netCDF, GRIB, zarr) — the agent MUST announce the escalation, auto-select Tier 2 (`skeptical`), and apply the domain emphases of [profiles/domain-science.md](profiles/domain-science.md) additively on top of the active profile: at least one science-emphasis probe at standard intensity, at least two at skeptical. Additive only — it never replaces the active profile, removes axes, or lowers pass criteria. A science-flagged diff counts as "areas flagged by the active interview profile" for cursory eligibility, so cursory MUST be refused.
+- **Documentation Churn Capping:** Diffs consisting solely of pure documentation or comments (`*.md`, docs, docstrings) exceeding >5 files or >200 lines cap at Tier 1 (`standard`) and do not trigger Tier 2 (`skeptical`).
 - Record the level actually run (post-escalation) in the `interview=` token of `Signoff-Agent`.
 
 #### Interview Profile (sole customization point)
@@ -308,7 +317,7 @@ To manually verify the harness adapter and transcript digest helper logic across
 ---
 
 ## Modifiers
-Modifiers select the named interview-intensity level (see Interview Intensity Levels):
-- `/signoff`: **standard** intensity (default).
-- `/signoff --quick`: **cursory** intensity — subject to the cursory-eligibility guard (auto-escalates to standard on large or high-risk diffs).
-- `/signoff --deep`: **skeptical** intensity.
+Modifiers select the named interview-intensity level (see Adaptive Interview Intensity & Classification Matrix):
+- `/signoff`: **adaptive** intensity (default) — dynamically auto-selects Tier 0 (`cursory`), Tier 1 (`standard`), or Tier 2 (`skeptical`) based on range diff impact and blast radius heuristics.
+- `/signoff --quick`: **cursory** intensity (Tier 0) — subject to the one-way safety clamp (strictly blocked and auto-escalated to standard/skeptical on high-impact diffs: `auth/`, `crypto/`, `permissions/`, `migrations/`, `schema.sql`, `ALTER TABLE`, `proto`, `OpenAPI`, scientific computation, or >5 files or >200 lines).
+- `/signoff --deep`: **skeptical** intensity (Tier 2) — unconditionally enforces skeptical rigor, multiple probes per axis, and prediction challenges.

@@ -193,7 +193,14 @@ transcript snapshot bytes as the digest. Per-harness sources:
 | Generic / other | `N/A` | transcript scan → self-report | `N/A` |
 
 `interview=` records the intensity level actually run (cursory / standard /
-skeptical, post-escalation) and the active profile's `Profile-ID`.
+skeptical, post-escalation) and the active profile's `Profile-ID`. When no
+explicit modifier (`--quick` / `--deep`) is supplied, `/signoff` uses
+**adaptive intensity by default** — dynamically inspecting range diff semantics
+and blast radius to auto-select Tier 0 (cursory for pure docs/types <50 LoC),
+Tier 1 (standard for regular features/bugfixes), or Tier 2 (skeptical for
+security, schema/migrations, public APIs, scientific code, or >200 LoC / >5 files).
+Explicit `--quick` is governed by a one-way safety clamp that strictly blocks
+cursory on high-impact diffs.
 Self-reported model values are honest best-effort, not verifiable; where the
 harness records model IDs in the transcript, the transcript digest lets
 auditors re-derive the model from the same bytes.
