@@ -1,0 +1,17 @@
+[SIGNOFF 067ce56]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-14T14:02:16Z
+Signoff-Base-SHA: 35aecbd135c1a4b1ccc43e968d92d8fd9b8fa82a
+Signoff-Reviewed-Commit-SHA: 067ce564c6714d13a2377d3119a17e137188c1bb
+Signoff-Reviewed-Tree-SHA: eae6959d163c6c21e90ec2896fea142f76a9bffb
+Signoff-Harness-ID: antigravity-cli
+Signoff-Conversation-ID: a7f91304-9e84-432f-851b-3d12ad10a45c
+Signoff-Transcript-Digest: sha256:4301c6aeed8b926082de61b343880e408a28841f1e9f49ee5cf2111c07762fe7
+Signoff-Transcript-Bytes: 647262
+Signoff-Tradeoff: Prompt-level heuristics govern intensity auto-selection with one-way safety clamps on modifiers
+Signoff-Tradeoff: Documentation diffs of any size cap at Tier 1 (standard) and never trigger Tier 2
+Signoff-Risk: Heuristic classification false positives could auto-select standard or skeptical scrutiny on non-trivial diffs
+Signoff-Verified-By: jerrylin247365@gmail.com
+Signoff-Agent: harness=antigravity-cli/N/A model=gemini-2.5-pro reasoning=N/A interview=standard/software-general
