@@ -492,9 +492,12 @@ def test_signoff_phase3f_adaptive_intensity_contract():
         "Removed cop-out claim that science probe requirement is automatically satisfied"
     )
 
-    # (9) Attestation trailer level name rule & LaTeX rendering check
+    # (9) Attestation trailer level name rule & anti-regression checks
     assert "never record the tier label" in signoff_content, "Missing trailer level naming rule in SKILL.md"
     assert "$\\to$" not in signoff_content, "Found non-rendering LaTeX $\\to$ in SKILL.md"
+    assert "areas flagged by the active interview profile" not in signoff_content, (
+        "Found undefined profile-flagged mechanism phrase in SKILL.md"
+    )
 
     # (10) Cross-surface synchronization
     assert "adaptive intensity by default" in harnesses_content.lower(), "Missing adaptive intensity in HARNESSES.md"
