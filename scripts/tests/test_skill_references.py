@@ -467,11 +467,18 @@ def test_signoff_phase3f_adaptive_intensity_contract():
     assert "4-row safety clamp" in signoff_content or "4-row" in signoff_content, (
         "Missing 4-row safety clamp definition in skills/signoff/SKILL.md"
     )
+    assert "rows are evaluated in order; the first matching row governs" in signoff_content, (
+        "Missing clamp row evaluation order declaration in SKILL.md"
+    )
+    assert "≥50" in signoff_content, "Missing ≥50 LoC threshold in clamp row 1 in SKILL.md"
     assert "refuse cursory and auto-escalate to Tier 1" in signoff_content, (
         "Missing Tier 1 docs blast radius escalation in SKILL.md"
     )
     assert "refuse cursory and auto-escalate to Tier 2" in signoff_content, (
         "Missing Tier 2 high-impact/executable blast radius escalation in SKILL.md"
+    )
+    assert "do not trigger Tier 2 on diffs consisting solely of" in signoff_content, (
+        "Missing docs carve-out in clamp row 3 in SKILL.md"
     )
     assert "--deep" in signoff_content, "Missing --deep mapping in skills/signoff/SKILL.md"
     assert "Graduated One-Way Escalation" in signoff_content, "Missing graduated escalation heading in SKILL.md"
