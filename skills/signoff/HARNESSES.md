@@ -193,7 +193,18 @@ transcript snapshot bytes as the digest. Per-harness sources:
 | Generic / other | `N/A` | transcript scan → self-report | `N/A` |
 
 `interview=` records the intensity level actually run (cursory / standard /
-skeptical, post-escalation) and the active profile's `Profile-ID`.
+skeptical, post-escalation) and the active profile's `Profile-ID`. When no
+explicit modifier (`--quick` / `--deep`) is supplied, `/signoff` uses
+**adaptive intensity by default** — dynamically evaluating range diff semantics
+and blast radius per SKILL.md's classification precedence: Tier 0 (`cursory`
+for tiny pure docs/types <50 LoC AND ≤2 files), Tier 1 (`standard` for default
+feature work, with docs-only churn of any size capped at Tier 1), or Tier 2
+(`skeptical` for high-impact content/path triggers or executable blast
+radius >200 LoC / >5 files). Explicit `--quick` permits cursory opt-in on
+small routine code (≤200 LoC, ≤5 files) or small docs (<50 LoC, ≤2 files), but
+is subject to a 4-row safety clamp that strictly blocks cursory and
+auto-escalates to Tier 1 for docs blast radius (≥50 LoC or >2 files), or Tier 2
+for high-impact triggers / executable blast radius.
 Self-reported model values are honest best-effort, not verifiable; where the
 harness records model IDs in the transcript, the transcript digest lets
 auditors re-derive the model from the same bytes.

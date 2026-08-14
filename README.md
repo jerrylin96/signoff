@@ -52,7 +52,7 @@ you'd notice drift outside them. That is exactly the part a human must own.
 1. **Install** — pick the **one** row for your surface below; no channel
    requires another.
 2. **Run** — from the branch you want to merge, type `/signoff`
-   (`--deep` for a stricter interview, `--quick` for small low-risk diffs).
+   (adaptive default auto-selects intensity from diff; `--deep` for skeptical rigor, `--quick` for low-risk diffs subject to safety clamps).
 3. **Answer and confirm** — respond in your own words, acknowledge the named
    trade-offs and risks, confirm your email. The attestation commit and note
    are created and pushed with your branch.

@@ -388,3 +388,121 @@ def test_signoff_phase3d_research_accessibility_contract():
         assert term in science_profile_content, (
             f"Missing '{term}' emphasis in skills/signoff/profiles/domain-science.md"
         )
+
+
+def test_signoff_phase3f_adaptive_intensity_contract():
+    """Verify Phase 3f: Adaptive signoff interview intensity based on semantic impact and code churn."""
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    paths = {
+        "skills/signoff/SKILL.md": None,
+        "skills/signoff/specs/gsa-core.md": None,
+        "skills/signoff/HARNESSES.md": None,
+        "README.md": None,
+        "site/index.html": None,
+    }
+    for rel in paths:
+        path = os.path.join(root_dir, rel)
+        assert os.path.exists(path), f"{rel} does not exist"
+        with open(path, "r", encoding="utf-8") as f:
+            paths[rel] = f.read()
+    signoff_content = paths["skills/signoff/SKILL.md"]
+    spec_content = paths["skills/signoff/specs/gsa-core.md"]
+    harnesses_content = paths["skills/signoff/HARNESSES.md"]
+    readme_content = paths["README.md"]
+    site_content = paths["site/index.html"]
+
+    # (1) Phase 3f identifier and cross-references
+    assert "Phase 3f (Adaptive Signoff Interview Intensity)" in spec_content, "Missing Phase 3f entry in gsa-core.md"
+    assert "test_signoff_phase3f_adaptive_intensity_contract" in spec_content, (
+        "Phase 3f in gsa-core.md must reference test_signoff_phase3f_adaptive_intensity_contract"
+    )
+    assert "live classification dogfood pending" in spec_content, (
+        "Phase 3f status in gsa-core.md must note live classification dogfood pending"
+    )
+
+    # (2) Adaptive classification matrix & naming
+    assert "Interview Intensity Levels & Adaptive Classification Matrix" in signoff_content, (
+        "Missing intensity matrix heading in skills/signoff/SKILL.md"
+    )
+    assert "governs auto-classification for bare" in signoff_content, (
+        "Missing bare /signoff auto-classification scoping sentence in SKILL.md"
+    )
+    for tier in ["Tier 0", "Tier 1", "Tier 2"]:
+        assert tier in signoff_content, f"Missing '{tier}' classification in skills/signoff/SKILL.md"
+
+    # (3) Probe count floors (no silent lowering of rigor)
+    assert "2 (one turn)" in signoff_content, "Tier 0 / cursory probe count must be 2"
+    assert "4–6 (2–3 turns)" in signoff_content, "Tier 1 / standard probe count must be 4–6"
+    assert "8+ (4+ turns)" in signoff_content, "Tier 2 / skeptical probe count must be 8+"
+
+    # (4) Pass criteria invariants
+    assert "riskiest consequence" in signoff_content, "Tier 0 must require riskiest consequence acceptance"
+    assert "At least one probe per universal axis" in signoff_content, "Tier 1 must require 1 probe per axis"
+    assert "At least two probes per universal axis" in signoff_content, "Tier 2 must require 2 probes per axis"
+    assert "prediction challenges" in signoff_content, "Tier 2 must require prediction challenges"
+    assert "Restating the diff does not pass" in signoff_content, "Tier 2 must enforce anti-restating rule"
+
+    # (5) Canonical High-Impact Tier 2 triggers
+    assert "Canonical High-Impact Tier 2 Heuristic Triggers" in signoff_content, (
+        "Missing Canonical Tier 2 triggers block in skills/signoff/SKILL.md"
+    )
+    for trigger_signal in [
+        "auth/", "crypto/", "permissions/", "migrations/", "schema.sql", "ALTER TABLE",
+        "proto", "OpenAPI", "numpy", "scipy", "jax", "torch", "astropy", "pandas", "xarray",
+        ".ipynb", "netCDF", "GRIB", "zarr"
+    ]:
+        assert trigger_signal in signoff_content, f"Missing Tier 2 trigger '{trigger_signal}' in skills/signoff/SKILL.md"
+    assert ">5 files or >200 lines" in signoff_content, "Missing blast radius threshold in skills/signoff/SKILL.md"
+
+    # (6) Evaluation order & documentation capping
+    assert "Classification Precedence & Evaluation Order" in signoff_content, (
+        "Missing evaluation order in skills/signoff/SKILL.md"
+    )
+    assert "<50" in signoff_content, "Missing Tier 0 LoC threshold in skills/signoff/SKILL.md"
+    assert "capped at max Tier 1" in signoff_content or "capped at Tier 1" in signoff_content, (
+        "Missing pure docs Tier 1 capping rule in skills/signoff/SKILL.md"
+    )
+
+    # (7) Modifier precedence, safety clamps, and graduated escalation
+    assert "4-row safety clamp" in signoff_content or "4-row" in signoff_content, (
+        "Missing 4-row safety clamp definition in skills/signoff/SKILL.md"
+    )
+    assert "rows are evaluated in order; the first matching row governs" in signoff_content, (
+        "Missing clamp row evaluation order declaration in SKILL.md"
+    )
+    assert "≥50" in signoff_content, "Missing ≥50 LoC threshold in clamp row 1 in SKILL.md"
+    assert "refuse cursory and auto-escalate to Tier 1" in signoff_content, (
+        "Missing Tier 1 docs blast radius escalation in SKILL.md"
+    )
+    assert "refuse cursory and auto-escalate to Tier 2" in signoff_content, (
+        "Missing Tier 2 high-impact/executable blast radius escalation in SKILL.md"
+    )
+    assert "do not trigger Tier 2 on diffs consisting solely of" in signoff_content, (
+        "Missing docs carve-out in clamp row 3 in SKILL.md"
+    )
+    assert "--deep" in signoff_content, "Missing --deep mapping in skills/signoff/SKILL.md"
+    assert "Graduated One-Way Escalation" in signoff_content, "Missing graduated escalation heading in SKILL.md"
+    assert "Never de-escalate within a session" in signoff_content, "Missing no de-escalation rule in SKILL.md"
+
+    # (8) Science probe requirement (additive rigor)
+    assert "at least two of the skeptical probes MUST apply domain-science emphases" in signoff_content, (
+        "Science guard must explicitly require at least two domain-science emphasis probes"
+    )
+    assert "satisfied by Tier 2's two-per-axis requirement" not in signoff_content, (
+        "Removed cop-out claim that science probe requirement is automatically satisfied"
+    )
+
+    # (9) Attestation trailer level name rule & anti-regression checks
+    assert "never record the tier label" in signoff_content, "Missing trailer level naming rule in SKILL.md"
+    assert "$\\to$" not in signoff_content, "Found non-rendering LaTeX $\\to$ in SKILL.md"
+    assert "areas flagged by the active interview profile" not in signoff_content, (
+        "Found undefined profile-flagged mechanism phrase in SKILL.md"
+    )
+
+    # (10) Cross-surface synchronization
+    assert "adaptive intensity by default" in harnesses_content.lower(), "Missing adaptive intensity in HARNESSES.md"
+    assert "capped at tier 1" in harnesses_content.lower(), "Missing docs cap mention in HARNESSES.md"
+    assert "adaptive default auto-selects intensity" in readme_content.lower(), "Missing adaptive default in README.md"
+    assert "adaptive default auto-selects intensity" in site_content.lower(), "Missing adaptive default in site/index.html"
+
+
