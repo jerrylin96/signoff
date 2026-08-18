@@ -45,8 +45,10 @@ jobs:
           set -euo pipefail
           ensure_tag() {
             local tag="$1" target="$2"
+            # Release tags are v<digit>… (v0.3.0). The pattern must not swallow
+            # pin tags that merely start with "v" — verify-v1 is not a release.
             case "$tag" in
-              v*) echo "Release tags (v*) are cut by the Release workflow." >&2; exit 1 ;;
+              v[0-9]*) echo "Release tags (v[0-9]*) are cut by the Release workflow." >&2; exit 1 ;;
             esac
             if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
               echo "Tag $tag already exists on origin; leaving it untouched."
