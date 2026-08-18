@@ -169,3 +169,87 @@ def test_end_to_end_against_this_repo():
     assert ok, lines
     ok, lines = verify_signoff.check_head(REPO_ROOT, "5bec5ee")
     assert ok, lines
+
+
+def test_verifier_never_overwrites_unpushed_local_notes(repo, tmp_path):
+    """Regression: main() used to fetch origin into refs/notes/signoff with a
+    force refspec, destroying attestation notes not yet pushed — the failure
+    gsa-core §2.5 warns about, hit in practice while dogfooding. Origin's
+    notes must land in the verifier's own mirror instead."""
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    git(repo, "remote", "add", "origin", str(origin))
+
+    reviewed, tree = attest_head(repo)
+    git(repo, "push", "-q", "origin", "HEAD:refs/heads/main")
+
+    payload = attestation_message(reviewed, tree)
+    # Note on the commit: pushed, so origin knows about it.
+    git(repo, "notes", "--ref=refs/notes/signoff", "add", "-m", payload, reviewed)
+    git(repo, "push", "-q", "origin", "refs/notes/signoff")
+    # Note on the tree: local only — the record a force-fetch would erase.
+    git(repo, "notes", "--ref=refs/notes/signoff", "add", "-m", payload, tree)
+
+    before = git(repo, "rev-parse", "refs/notes/signoff").stdout.strip()
+    assert verify_signoff.main(["--repo", str(repo), "--target", "HEAD"]) == 0
+
+    after = git(repo, "rev-parse", "refs/notes/signoff", check=False).stdout.strip()
+    assert after == before, "verifier moved refs/notes/signoff"
+    shown = git(repo, "notes", "--ref=refs/notes/signoff", "show", tree, check=False)
+    assert shown.returncode == 0 and "Signoff-Spec-Version" in shown.stdout, (
+        "un-pushed local note was destroyed by the verifier"
+    )
+
+
+def test_head_mode_verifies_an_unpushed_local_note(repo, tmp_path):
+    """A note that exists only locally still satisfies the §5.1 lookup."""
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    git(repo, "remote", "add", "origin", str(origin))
+
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    git(repo, "push", "-q", "origin", "HEAD:refs/heads/main")
+    git(
+        repo,
+        "notes",
+        "--ref=refs/notes/signoff",
+        "add",
+        "-m",
+        attestation_message(reviewed, tree),
+        reviewed,
+    )
+
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert ok, lines
+    assert "note on commit" in lines[0]
+
+
+def test_failed_notes_fetch_is_named_on_failure(repo, tmp_path, capsys):
+    """A failing notes fetch must not masquerade as 'never attested'."""
+    git(repo, "remote", "add", "origin", str(tmp_path / "nope.git"))
+    assert verify_signoff.main(["--repo", str(repo), "--target", "HEAD"]) == 1
+    out = capsys.readouterr().out
+    assert "no valid attestation" in out
+    assert "origin notes fetch failed" in out
+
+
+def test_remote_without_notes_ref_stays_quiet(repo, tmp_path, capsys):
+    """A remote that simply has no notes ref yet is the normal first-adopter
+    state, not a fault — no warning for it."""
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    git(repo, "remote", "add", "origin", str(origin))
+    git(repo, "push", "-q", "origin", "HEAD:refs/heads/main")
+    assert verify_signoff.main(["--repo", str(repo), "--target", "HEAD"]) == 1
+    out = capsys.readouterr().out
+    assert "no valid attestation" in out
+    assert "fetch failed" not in out
+
+
+def test_no_warning_when_verification_passes(repo, tmp_path, capsys):
+    """The warning is a failure diagnostic, not a general nag."""
+    git(repo, "remote", "add", "origin", str(tmp_path / "nope.git"))
+    attest_head(repo)
+    assert verify_signoff.main(["--repo", str(repo), "--target", "HEAD"]) == 0
+    assert "fetch failed" not in capsys.readouterr().out

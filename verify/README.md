@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # full history — attestations live in it
-      - uses: jerrylin96/signoff/verify@verify-v1
+      - uses: jerrylin96/signoff/verify@verify-v1.1
 ```
 
 **2.** Add the badge to your README:
@@ -43,10 +43,18 @@ Done. Pull requests now fail the check until the branch ends in a valid
 attestation (run `/signoff` before merging), and your default branch badge
 reads **attested by humans: passing**.
 
-The `verify-v1` tag is the stable pin for the action — it does not move.
-Backward-compatible fixes ship as `verify-v1.x` tags; a breaking change to
-the action's inputs or pass criteria would ship as `verify-v2`. Tracking
-`@main` works but couples your CI to this repository's development pace.
+Pin tags do not move. Backward-compatible fixes ship as new `verify-v1.x`
+tags; a breaking change to the action's inputs or pass criteria would ship
+as `verify-v2`. Tracking `@main` works but couples your CI to this
+repository's development pace.
+
+> **If you pinned `@verify-v1`, move to `@verify-v1.1`.** `verify-v1`
+> predates a fix for a bug that could destroy attestation notes you had
+> created but not yet pushed: the verifier fetched origin's notes directly
+> into `refs/notes/signoff`, force-overwriting local ones, while still
+> reporting `PASS`. Verdicts are unaffected — only the note-handling side
+> effect — so the upgrade is drop-in. Because pins never move, `verify-v1`
+> keeps running the old behavior until you re-pin.
 
 ## What it checks
 
@@ -58,7 +66,7 @@ the action's inputs or pass criteria would ship as `verify-v2`. Tracking
 Override with inputs:
 
 ```yaml
-      - uses: jerrylin96/signoff/verify@verify-v1
+      - uses: jerrylin96/signoff/verify@verify-v1.1
         with:
           mode: history      # or: head
           target: main       # commit (head) or ref (history)
@@ -69,6 +77,11 @@ The verifier is a single stdlib-only Python file
 ([`verify_signoff.py`](verify_signoff.py)) — no dependencies beyond git and
 Python 3.10+. Copy it into any CI system; GitHub Actions is just the
 packaged path.
+
+Running it is non-destructive to your signoff notes: it fetches origin's
+notes into an isolated mirror (`refs/notes/signoff-verify`) and never writes
+to `refs/notes/signoff` — ensuring any unpushed local attestations remain
+intact and verifiable (gsa-core §5.1).
 
 ## What a green badge means — and doesn't
 

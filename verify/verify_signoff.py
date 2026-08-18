@@ -21,6 +21,10 @@ Two modes:
 
 Exit 0 on pass, 1 on fail. No dependencies beyond Python 3.10+ and git;
 copy this file anywhere or run it via the companion composite action.
+
+Verification is non-destructive to your signoff notes: origin's notes are
+fetched into an isolated mirror ref, never into refs/notes/signoff, so an
+attestation you have not pushed yet survives a verifier run.
 """
 
 import argparse
@@ -29,6 +33,12 @@ import subprocess
 import sys
 
 NOTES_REF = "refs/notes/signoff"
+# The verifier's own isolated mirror of origin's notes. Fetching origin straight
+# into NOTES_REF force-overwrites attestation notes that have not been pushed
+# yet — gsa-core §5.1 forbids exactly that, and a reviewer who runs /signoff
+# offline and verifies before pushing would silently lose the record. This ref
+# is the only thing verification writes; NOTES_REF is read and never modified.
+NOTES_FETCH_REF = "refs/notes/signoff-verify"
 SUBJECT_RE = re.compile(r"^\[SIGNOFF [0-9a-f]{7,40}\]: ")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 TRAILER_RE = re.compile(r"^(Signoff-[A-Za-z0-9-]+):\s*(.*)$")
@@ -99,9 +109,16 @@ def history_payloads(repo, ref):
     return out
 
 
-def note_payload(repo, target):
-    proc = git(repo, "notes", f"--ref={NOTES_REF}", "show", target, check=False)
-    return proc.stdout if proc.returncode == 0 else None
+def note_payloads(repo, target):
+    """Every payload attached to `target`, across the local notes ref and the
+    fetched mirror. Local notes are read first so an un-pushed attestation
+    verifies without ever being overwritten by origin."""
+    out = []
+    for ref in (NOTES_REF, NOTES_FETCH_REF):
+        proc = git(repo, "notes", f"--ref={ref}", "show", target, check=False)
+        if proc.returncode == 0 and proc.stdout.strip() and proc.stdout not in out:
+            out.append(proc.stdout)
+    return out
 
 
 def check_head(repo, target):
@@ -137,8 +154,7 @@ def check_head(repo, target):
 
     candidates = []
     for note_target, how in ((commit, "note on commit"), (tree, "note on tree")):
-        payload = note_payload(repo, note_target)
-        if payload:
+        for payload in note_payloads(repo, note_target):
             candidates.append((how, payload))
     candidates += history_payloads(repo, commit)
 
@@ -164,14 +180,17 @@ def check_history(repo, ref, require):
     lines, valid = [], 0
     seen = set()
     payloads = history_payloads(repo, ref)
-    listing = git(repo, "notes", f"--ref={NOTES_REF}", "list", check=False)
-    if listing.returncode == 0:
+    annotated = []
+    for ref in (NOTES_REF, NOTES_FETCH_REF):
+        listing = git(repo, "notes", f"--ref={ref}", "list", check=False)
+        if listing.returncode != 0:
+            continue
         for entry in listing.stdout.split("\n"):
-            if entry:
-                target = entry.split()[1]
-                payload = note_payload(repo, target)
-                if payload:
-                    payloads.append((f"note on {target[:7]}", payload))
+            if entry and entry.split()[1] not in annotated:
+                annotated.append(entry.split()[1])
+    for target in annotated:
+        for payload in note_payloads(repo, target):
+            payloads.append((f"note on {target[:7]}", payload))
     for source, payload in payloads:
         trailers = parse_trailers(payload)
         problems = validate(trailers)
@@ -201,11 +220,20 @@ def main(argv=None):
     p.add_argument("--require", type=int, default=1, help="history mode: minimum valid attestations")
     args = p.parse_args(argv)
 
-    git(args.repo, "fetch", "origin", f"+{NOTES_REF}:{NOTES_REF}", check=False)
+    fetched = git(args.repo, "fetch", "origin", f"+{NOTES_REF}:{NOTES_FETCH_REF}", check=False)
     if args.mode == "head":
         ok, lines = check_head(args.repo, args.target)
     else:
         ok, lines = check_history(args.repo, args.target, args.require)
+    if not ok and fetched.returncode != 0:
+        # A failed notes fetch turns "attested, note unreachable" into the same
+        # message as "never attested", sending the reader to re-run an interview
+        # instead of at the network. Name the real cause — but stay quiet about
+        # a remote that simply has no notes ref yet, which is the normal state
+        # for a first-time adopter and not a fault.
+        err = fetched.stderr.strip()
+        if err and "couldn't find remote ref" not in err:
+            lines.append(f"  warning: origin notes fetch failed ({err.splitlines()[-1]})")
     print("\n".join(lines))
     return 0 if ok else 1
 
