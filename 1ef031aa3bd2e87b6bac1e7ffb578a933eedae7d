@@ -1,0 +1,31 @@
+[SIGNOFF de7f27d]: human comprehension and risk attestation
+
+Skeptical-intensity interview (Tier 2 under the adaptive matrix: the diff adds
+a normative MUST to a licensed, externally-implemented specification, which is
+a public interface contract regardless of line count), embedded
+software-general profile, no science signals. Eight probes, two per universal
+axis, including two prediction challenges. The interview changed the diff
+twice: the reviewer caught that 'verification is read-only' overclaimed, since
+the verifier does write its mirror ref, and the wording was corrected in spec,
+README, and source before attesting; and the reviewer specified the failure
+diagnostic that distinguishes an unreachable note from a missing attestation,
+which was implemented and tested before attesting.
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-20T20:59:29Z
+Signoff-Base-SHA: f01ac253534f2c1200eaa3cb016b264d42ce4c46
+Signoff-Reviewed-Commit-SHA: de7f27d51a5b36d31e12959cd5cf9e1aee50fbdd
+Signoff-Reviewed-Tree-SHA: 1ef031aa3bd2e87b6bac1e7ffb578a933eedae7d
+Signoff-Harness-ID: claude-code
+Signoff-Conversation-ID: 18df82ba-1f44-5daf-bb43-86fb80cf1e09
+Signoff-Transcript-Digest: sha256:23644b1669bb08f5c4adee980f0bd33b4c5608ea42fc4ce8c51edba5ef95017f
+Signoff-Transcript-Bytes: 3051594
+Signoff-Tradeoff: first-match-wins on conflicting payloads — if a local note and origin's note for the same object disagree, check_head accepts the first that binds and never surfaces the conflict; accepted because the attestation commit is the primary history-visible record and notes are secondary, so conflict adjudication belongs to the notes/escrow layer rather than the PR gate
+Signoff-Tradeoff: verification writes exactly one ref (refs/notes/signoff-verify) rather than being literally read-only; the claim is scoped to non-destructive-to-your-signoff-notes in spec, README, and source after the reviewer identified the overclaim mid-interview
+Signoff-Tradeoff: the fetch diagnostic appears only on a failing run and stays silent for a remote with no notes ref, so a genuine fetch failure on a passing run remains invisible — accepted, since the warning is a failure diagnostic rather than a general nag
+Signoff-Risk: the §5.1 MUST is retroactive — a third-party verifier that fetches into refs/notes/signoff becomes non-conforming without having changed; mitigated by the rule formalizing an inspection-safety invariant §2.5 already applied to the push path, and by the one known external implementation already complying
+Signoff-Risk: pin tags never move, so adopters pinned at verify-v1 keep running the destructive verifier until they re-pin; this diff ships verify-v1.1 and a README upgrade notice, but the upgrade requires adopter action and no notification channel exists
+Signoff-Risk: the pre-existing test_live_notes_mirror_production_vector failure remains — a historical duplicated payload on one annotated object, confirmed stable at x2 across recovery runs and therefore not a live idempotence bug, deliberately left out of this diff
+Signoff-Verified-By: jlin404@bu.edu
+Signoff-Agent: harness=claude-code/2.1.42 model=claude-opus-5 reasoning=high interview=skeptical/software-general
