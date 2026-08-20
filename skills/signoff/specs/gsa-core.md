@@ -168,6 +168,8 @@ To verify if a target commit or tree was attested:
 2. **Git Log Attestation Commit Lookup:** If notes are un-fetched, search git log for commit messages matching `[SIGNOFF *]`.
 3. **Tree-SHA Fallback:** If commit SHA is missing, compare `Signoff-Reviewed-Tree-SHA` against tree SHAs (`git rev-parse <commit>^{tree}`) in `refs/notes/signoff` or git log. If tree SHAs match, the attestation is verified valid for that exact code state.
 
+**Verification MUST NOT mutate user attestation notes.** A verifier MUST NOT write to or modify `refs/notes/signoff`. Verifiers fetching remote notes MUST isolate remote state by writing exclusively to a dedicated mirror ref (e.g. `refs/notes/signoff-verify`) or an ephemeral namespace, preserving all local unpushed notes; alternatively they MAY merge with `cat_sort_uniq` per §2.5, which is additive rather than destructive. The concrete hazard: fetching a remote notes ref directly into the local one (`+refs/notes/signoff:refs/notes/signoff`) force-overwrites attestation notes not yet pushed — the same hazard §2.5 addresses for the push path. A reviewer who signs off offline and verifies before pushing must not lose the record by verifying it.
+
 ---
 
 ## 6. Phase Gate Status
