@@ -1,0 +1,21 @@
+[SIGNOFF 7721a1e]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-05T03:19:02Z
+Signoff-Base-SHA: 6f78556583d6150cf3e378865ceec40cbe36a22f
+Signoff-Reviewed-Commit-SHA: 7721a1e6cbc3fbc286ff89ab972f187ec3e85efe
+Signoff-Reviewed-Tree-SHA: f97e031dd0923ea350bf8db1f6ddc468ca7cec4c
+Signoff-Harness-ID: claude-code
+Signoff-Conversation-ID: 8b7b38e2-41e1-5d47-862a-c4f5848c00fb
+Signoff-Transcript-Digest: sha256:25db9d41e5b24beaff5bfa3402f8127591933b7d79be75773d08521b97d0cbae
+Signoff-Transcript-Bytes: 1735402
+Signoff-Tradeoff: Project-skill symlink serves dogfood acceleration only; external users on upload/plugin channels
+Signoff-Tradeoff: Marketplace-as-primary rests on unverified cloud-session sync; zip upload retained as proven web fallback
+Signoff-Risk: Attestation commit authored and signed by cloud-session identity, not the human key; human binding rests on Verified-By trailer and transcript digest
+Signoff-Risk: Session transcript is ephemeral; digest cannot be re-verified against source after container reclaim
+Signoff-Verified-By: jlin404@bu.edu
+Signoff-Agent: Claude Code /signoff v1.0
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018XX3CXvp3RT2SHacYTaQ1j

@@ -1,0 +1,42 @@
+[SIGNOFF 3b0f715]: human comprehension and risk attestation
+
+Standard-intensity interview, embedded software-general profile (no repo-local
+profile present; the science guard found no genuine signals — the sole regex
+hit is gsa-core §6 prose describing the guard itself). Four axes closed across
+three follow-up probes: the post-merge verify-v1 tag mechanism and why the
+proxy/dispatch constraints force it; the immutable-tag trade-off (consent over
+freshness, with no notification channel to pinned adopters); spec-1.0
+legitimacy of the §2.3 case-sensitivity clarification (discovered ambiguity,
+zero affected production attestations); tag.yml silent-failure exposure and
+its self-healing recovery; and the newly-rejected non-empty attestation tip,
+walked through the §5.1 lookup paths to a loud failure with a documented
+remedy.
+
+Interviewer provenance note: the session switched models after the interview
+concluded; the deterministic model= token resolves to the final model
+(claude-opus-5), while the interview itself — all probes and all code changes
+in this range — was conducted by claude-fable-5. The trailer is left exactly
+as emitted rather than hand-edited. The last-wins sourcing heuristic in §2.3
+misattributes any session with a mid-session model switch; recorded here as a
+protocol finding for a follow-up session.
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-08T20:50:07Z
+Signoff-Base-SHA: 155035046d2633e931963b88c5998d0a1cfe269c
+Signoff-Reviewed-Commit-SHA: 3b0f715ef66c3f9c2a1e1f3359b0006a195391dc
+Signoff-Reviewed-Tree-SHA: 242f471dac946dcd48c3add494fb76ef845502dc
+Signoff-Harness-ID: claude-code
+Signoff-Conversation-ID: 18df82ba-1f44-5daf-bb43-86fb80cf1e09
+Signoff-Transcript-Digest: sha256:058a853b47bfb950d69c516dfa7345cf8c15b6f6c360badc3ff052cef36e04f3
+Signoff-Transcript-Bytes: 1897206
+Signoff-Tradeoff: verify-v1 is immutable — fixes ship as new tags (verify-v1.1/verify-v2) and pinned adopters stay on the old verifier until they manually re-pin, with no notification channel; consent over freshness
+Signoff-Tradeoff: verify-v1 is created post-merge by the push-to-main tag workflow, so verify/README references the tag before it exists; recovery is self-healing on any later main push, manual dispatch or job re-run otherwise
+Signoff-Tradeoff: the §2.3 trailer-key case-sensitivity clarification ships as spec 1.0 without a version bump — legitimate only because the ambiguity was discovered rather than a shipped feature, and no production attestation carries case-variant keys
+Signoff-Tradeoff: Phase 3b ticked with the Codex end-to-end run explicitly not performed, recorded in §6 as a seeding-era item rather than a merge blocker
+Signoff-Risk: hardened head mode rejects non-empty attestation tips (e.g. an amended attestation commit) that previously passed — intended and documented, but adopters can hit it and must re-run /signoff on the real tip
+Signoff-Risk: a tag.yml failure on the merge push is silent absent configured notifications; an external adopter would likely discover it first, as an action-resolution failure in their CI
+Signoff-Risk: pypi-publish is untested end-to-end until the PyPI trusted publisher exists; the first dispatch may fail at the OIDC step
+Signoff-Risk: GitHub Pages remains undeployed pending Settings enablement, and site claims are unverifiable from cloud sessions because the proxy blocks github.io
+Signoff-Verified-By: jlin404@bu.edu
+Signoff-Agent: harness=claude-code/2.1.42 model=claude-opus-5 reasoning=high interview=standard/software-general

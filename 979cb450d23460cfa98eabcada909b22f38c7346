@@ -1,0 +1,19 @@
+[SIGNOFF 979cb45]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-06T00:43:59Z
+Signoff-Base-SHA: 5ca9431dde6fff9d8bc73d7b5ae4198aa7bdd1d3
+Signoff-Reviewed-Commit-SHA: 979cb450d23460cfa98eabcada909b22f38c7346
+Signoff-Reviewed-Tree-SHA: 7ef0eac36820b2af49a8fafc220dad7cfcbef9b7
+Signoff-Harness-ID: claude-code
+Signoff-Conversation-ID: c898d01c-7758-544a-ad25-7557a5bc8106
+Signoff-Transcript-Digest: sha256:a18746113c7be4a9feb623a869e8a36f000fa8eb9b34d2ca252ab12ee57c0282
+Signoff-Transcript-Bytes: 1858607
+Signoff-Tradeoff: dogfood-only contract test deleted; step-5 profile-source announcement is the remaining surface for a reintroduced repo-local profile
+Signoff-Tradeoff: moat strategy is open-protocol standardization (AAIF candidate home, OpenSSF interop) seeded via champions with badge/verifier as the sharing loop; infra and pricing gated on discovery evidence
+Signoff-Tradeoff: Phase 5 gate 0 is CI notes recovery; transcript-escrow null hypothesis is user-owned storage with client-side encryption
+Signoff-Risk: refs/notes/signoff unpushed until the gate-0 workflow lands or a manual push from an unrestricted clone
+Signoff-Risk: adversarial-review habit and strategy doc are convention and prose, unenforced by tests
+Signoff-Verified-By: jlin404@bu.edu
+Signoff-Agent: harness=claude-code/2.1.42 model=claude-fable-5 reasoning=high interview=standard/software-general

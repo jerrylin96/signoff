@@ -1,0 +1,28 @@
+[SIGNOFF a4afbfe]: human comprehension and risk attestation
+
+Standard-intensity interview, embedded software-general profile (repo-local
+dogfood profile retired last session; science guard found no signals in this
+range). All four axes closed: notes-as-arbitrary-tree-entries mechanics and
+their downstream-clone scope, the advisory-vs-required PR check contract,
+and the isolated, log-fallback-covered failure mode of the unverified
+Actions notes push.
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-06T13:58:20Z
+Signoff-Base-SHA: da45897e094fe07d235ca856d71f36a4fa2fe3e4
+Signoff-Reviewed-Commit-SHA: a4afbfeee1200b83332368f901aac901a63d71f9
+Signoff-Reviewed-Tree-SHA: 0c159559245433b0249f547fde8c28f75aa4f3e2
+Signoff-Harness-ID: claude-code
+Signoff-Conversation-ID: 116e2b06-ba7a-54e2-9cf1-041748535ae5
+Signoff-Transcript-Digest: sha256:b753b2e5ca9c500357c511bb24f9706fc3fc7a3e24342f82d1741b1bbd8ebc98
+Signoff-Transcript-Bytes: 5360499
+Signoff-Tradeoff: Pre-extraction attestation notes attach to objects absent from this repo, meaningful only in downstream clones that carry them
+Signoff-Tradeoff: PR check ships as a loud advisory; it hard-blocks merges only once required-status-checks are configured per adopting repo
+Signoff-Tradeoff: verify/ action referenced at @main; adopters track main until a tagged action release exists
+Signoff-Tradeoff: Escrow spec is normative but unimplemented; Phase 5 gate 3 stays open behind its evidence rules
+Signoff-Risk: Actions push of refs/notes/signoff unverified until the merge triggers the first notes-recovery run; failure is isolated and log-lookup keeps verification intact
+Signoff-Risk: Pages deployment and live badge/zip links unverified until Pages enablement and merge
+Signoff-Risk: This session's own notes push will 403; recovered by the gate-0 workflow post-merge
+Signoff-Verified-By: jlin404@bu.edu
+Signoff-Agent: harness=claude-code/2.1.42 model=claude-fable-5 reasoning=high interview=standard/software-general

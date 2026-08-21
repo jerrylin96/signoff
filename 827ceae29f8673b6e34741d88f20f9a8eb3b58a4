@@ -1,0 +1,21 @@
+[SIGNOFF a4d1c6c]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-05T18:50:35Z
+Signoff-Base-SHA: f1fc8711d32ac4d51bbc990bb66601915150aef4
+Signoff-Reviewed-Commit-SHA: a4d1c6c91904d05952a96992b9a0c1ec0e2ee95a
+Signoff-Reviewed-Tree-SHA: 827ceae29f8673b6e34741d88f20f9a8eb3b58a4
+Signoff-Harness-ID: claude-code
+Signoff-Conversation-ID: 177f2ca4-4992-5e75-b0ae-11a7b2aa2b38
+Signoff-Transcript-Digest: sha256:1cd12961d20f7e263de281af14bec0a32cbaae32e9a782b31f554f67662c2017
+Signoff-Transcript-Bytes: 849377
+Signoff-Tradeoff: Profile dilution is auditable via the interview-token provenance digest, not prevented; file-sourced profile validation checks form, not rigor
+Signoff-Tradeoff: Malformed repo-local profiles fall back to the announced embedded default (stock rigor) rather than aborting; only the explicit SIGNOFF_PROFILE_FILE override aborts loudly
+Signoff-Risk: Phase 3d enforcement is prompt-level; contract tests pin instruction text, not agent runtime behavior
+Signoff-Risk: Science-detection heuristic can false-negative on unlisted formats and false-positive on prose mentioning science signals, as in this docs-only diff
+Signoff-Verified-By: jlin404@bu.edu
+Signoff-Agent: harness=claude-code/2.1.42 model=claude-fable-5 reasoning=high interview=standard/software-general
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BnbvTzXUuVb5gqYiSSkN9a

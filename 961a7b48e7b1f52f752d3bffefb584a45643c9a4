@@ -1,0 +1,21 @@
+[SIGNOFF d64b375]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-05T14:37:42Z
+Signoff-Base-SHA: bfa036dc22f6c5dcec3a9e4061fbd56c8d09dd0c
+Signoff-Reviewed-Commit-SHA: d64b375909d48258c90797cd135349cb7003c6e5
+Signoff-Reviewed-Tree-SHA: 961a7b48e7b1f52f752d3bffefb584a45643c9a4
+Signoff-Harness-ID: claude-code
+Signoff-Conversation-ID: c84c9b45-b61a-5453-94be-2502a532527c
+Signoff-Transcript-Digest: sha256:a1c7e5d1bf5f93c1ea9a15365fa6acd2564c8dd8bc46768bd45d2ffce0231cb7
+Signoff-Transcript-Bytes: 1009076
+Signoff-Tradeoff: Signoff-Agent grammar is a SHOULD within Spec-Version 1.0; consumers must sniff values to distinguish structured from legacy free-text provenance
+Signoff-Tradeoff: Model provenance falls back to unverifiable agent self-report when env and transcript expose nothing
+Signoff-Risk: Transcript model scan takes the last "model" match in the snapshot; quoted strings in conversation content can shadow true harness metadata
+Signoff-Risk: Post-merge attestation: commit lives only on the feature branch; main-side discoverability rests on notes/tree-SHA lookup and notes push still requires local recovery
+Signoff-Verified-By: jlin404@bu.edu
+Signoff-Agent: harness=claude-code/2.1.42 model=claude-fable-5 reasoning=high interview=standard/software-general
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Dm2UCDCMcUFRXMSyKDS6A4
