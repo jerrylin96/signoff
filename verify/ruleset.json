@@ -26,7 +26,6 @@
         "require_code_owner_review": false,
         "require_last_push_approval": false,
         "required_review_thread_resolution": false,
-        "require_extra_approval_for_unattributed_changes": false,
         "allowed_merge_methods": [
           "merge",
           "squash",
@@ -41,7 +40,7 @@
         "do_not_enforce_on_create": false,
         "required_status_checks": [
           {
-            "context": "verify",
+            "context": "verify-signoff",
             "integration_id": 15368
           }
         ]
