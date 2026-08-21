@@ -36,7 +36,6 @@ ALLOWED_PR_PARAM_KEYS = {
     "require_code_owner_review",
     "require_last_push_approval",
     "required_review_thread_resolution",
-    "automatic_copilot_code_review_enabled",
     "allowed_merge_methods",
 }
 
@@ -136,7 +135,9 @@ def test_ruleset_status_check_context(ruleset_data):
 
     extra_params = set(params.keys()) - ALLOWED_STATUS_CHECK_PARAM_KEYS
     assert not extra_params, f"Found invalid parameters in required_status_checks rule: {extra_params}"
-    assert params.get("strict_required_status_checks_policy") is False
+    # Freshness requirement: strict mode ensures PR branch is up to date with base before merge,
+    # preventing human-reviewed attestation states from silently going stale when base advances.
+    assert params.get("strict_required_status_checks_policy") is True
 
     checks = params.get("required_status_checks", [])
     assert len(checks) >= 1, "At least one required status check must be specified"

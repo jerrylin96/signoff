@@ -34,7 +34,7 @@ jobs:
 ```
 
 **2.** (Recommended) Enforce signoff before merge with the preconfigured GitHub Ruleset:
-Download [`ruleset.json`](ruleset.json) and import it into your repository via **Settings → Rules → Rulesets → Import a ruleset**.
+Download [`ruleset.json`](ruleset.json) and import it into your repository via **Settings → Rules → Rulesets → Import a ruleset**. The ruleset enforces strict status checks, requiring branches to be up to date with the default branch so the verified attestation state never goes stale.
 
 **3.** Add the badge to your README:
 
