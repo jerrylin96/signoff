@@ -33,7 +33,10 @@ jobs:
       - uses: jerrylin96/signoff/verify@verify-v1.1
 ```
 
-**2.** Add the badge to your README:
+**2.** (Recommended) Enforce signoff before merge with the preconfigured GitHub Ruleset:
+Download [`ruleset.json`](ruleset.json) and import it into your repository via **Settings → Rules → Rulesets → Import a ruleset**.
+
+**3.** Add the badge to your README:
 
 ```markdown
 [![attested by humans](https://github.com/OWNER/REPO/actions/workflows/signoff.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/signoff.yml)
@@ -91,9 +94,10 @@ accountability — and the record of that survives in git, tamper-evident.
 It does **not** mean the code is correct; it means a named human
 understands it. That is exactly the claim, no more.
 
-Two enforcement caveats. First, the check is advisory until you add a
-branch protection rule (or repository ruleset) on your default branch that
-requires it — without that, a red check does not block the merge button.
+Two enforcement caveats. First, the check is advisory until you enforce
+it on your default branch via branch protection or by importing
+[`ruleset.json`](ruleset.json) (**Settings → Rules → Rulesets → Import a
+ruleset**) — without that, a red check does not block the merge button.
 Second, unsigned trailers are self-attested: they verify that a
 structurally valid GSA record binds to this exact code state, not who wrote
 it. Where independent identity assurance matters, combine the gate with
