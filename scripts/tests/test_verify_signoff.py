@@ -253,3 +253,169 @@ def test_no_warning_when_verification_passes(repo, tmp_path, capsys):
     attest_head(repo)
     assert verify_signoff.main(["--repo", str(repo), "--target", "HEAD"]) == 0
     assert "fetch failed" not in capsys.readouterr().out
+
+
+def test_head_mode_passes_on_clean_2_parent_merge_with_attested_pr_head(repo):
+    git(repo, "checkout", "-b", "feature")
+    commit_file(repo, "b.txt", "feature work", "add b.txt")
+    attest_head(repo)
+    pr_head = git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    git(repo, "checkout", "main")
+    git(repo, "merge", "--no-ff", "-m", "Merge pull request #1 from feature", "feature")
+
+    merge_commit = git(repo, "rev-parse", "HEAD").stdout.strip()
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert ok, lines
+    text = "\n".join(lines)
+    assert f"PASS: merge commit {merge_commit[:7]} verified via attested PR head {pr_head[:7]}" in text
+
+
+def test_head_mode_passes_on_clean_2_parent_merge_with_attested_pr_head_via_notes(repo):
+    git(repo, "checkout", "-b", "feature")
+    commit_file(repo, "b.txt", "feature work", "add b.txt")
+    pr_head = git(repo, "rev-parse", "HEAD").stdout.strip()
+    pr_tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    payload = attestation_message(pr_head, pr_tree)
+    git(repo, "notes", "--ref=refs/notes/signoff", "add", "-m", payload, pr_head)
+
+    git(repo, "checkout", "main")
+    git(repo, "merge", "--no-ff", "-m", "Merge pull request #1 from feature", "feature")
+
+    merge_commit = git(repo, "rev-parse", "HEAD").stdout.strip()
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert ok, lines
+    assert f"PASS: merge commit {merge_commit[:7]} verified via attested PR head {pr_head[:7]}" in lines[0]
+
+
+def test_head_mode_fails_on_merge_with_unattested_pr_head(repo):
+    git(repo, "checkout", "-b", "feature")
+    commit_file(repo, "b.txt", "un-attested feature work", "add b.txt")
+    pr_head = git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    git(repo, "checkout", "main")
+    git(repo, "merge", "--no-ff", "-m", "Merge pull request #1 from feature", "feature")
+
+    merge_commit = git(repo, "rev-parse", "HEAD").stdout.strip()
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert not ok
+    assert f"FAIL: merge commit {merge_commit[:7]} PR head {pr_head[:7]} is not attested" in lines[0]
+
+
+def test_head_mode_fails_on_dirty_conflict_resolved_merge(repo):
+    git(repo, "checkout", "-b", "feature")
+    commit_file(repo, "b.txt", "feature content", "feature edit")
+    attest_head(repo)
+
+    git(repo, "checkout", "main")
+    commit_file(repo, "c.txt", "main content", "main edit")
+
+    git(repo, "merge", "--no-ff", "--no-commit", "feature")
+    # Smuggle an unreviewed file modification into the merge commit
+    (repo / "smuggled_in_merge.txt").write_text("unreviewed")
+    git(repo, "add", "smuggled_in_merge.txt")
+    git(repo, "commit", "-m", "Dirty merge with smuggled file")
+
+    merge_commit = git(repo, "rev-parse", "HEAD").stdout.strip()
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert not ok
+    assert f"FAIL: merge commit {merge_commit[:7]} tree does not match clean 3-way merge" in lines[0]
+
+
+def test_head_mode_fails_on_redundant_merge_where_pr_head_is_ancestor(repo):
+    commit_file(repo, "b.txt", "b", "commit b")
+    p1 = git(repo, "rev-parse", "HEAD").stdout.strip()
+    p2 = git(repo, "rev-parse", "HEAD~1").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    merge_commit = git(
+        repo, "commit-tree", "-p", p1, "-p", p2, "-m", "Redundant merge", tree
+    ).stdout.strip()
+    git(repo, "update-ref", "HEAD", merge_commit)
+
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert not ok
+    assert f"FAIL: merge commit {merge_commit[:7]} PR head {p2[:7]} is an ancestor of base" in lines[0]
+
+
+def test_head_mode_fails_on_octopus_merge(repo):
+    git(repo, "checkout", "-b", "branch1")
+    commit_file(repo, "b1.txt", "1", "branch 1")
+    attest_head(repo)
+
+    git(repo, "checkout", "main")
+    git(repo, "checkout", "-b", "branch2")
+    commit_file(repo, "b2.txt", "2", "branch 2")
+    attest_head(repo)
+
+    git(repo, "checkout", "main")
+    commit_file(repo, "m.txt", "m", "main edit")
+    git(repo, "merge", "branch1", "branch2", "-m", "Octopus merge")
+
+    merge_commit = git(repo, "rev-parse", "HEAD").stdout.strip()
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert not ok
+    assert f"FAIL: merge commit {merge_commit[:7]} is an octopus merge with 3 parents" in lines[0]
+
+
+def test_head_mode_passes_on_fast_forward_merge_with_attested_pr_head(repo):
+    git(repo, "checkout", "-b", "feature")
+    commit_file(repo, "b.txt", "feature work", "add b.txt")
+    attest_head(repo)
+    pr_head = git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    git(repo, "checkout", "main")
+    git(repo, "merge", "--ff-only", "feature")
+
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert ok, lines
+    assert pr_head[:7] in "\n".join(lines)
+
+
+def test_head_mode_fails_on_rebase_onto_advanced_base_without_resignoff(repo):
+    git(repo, "checkout", "-b", "feature")
+    commit_file(repo, "b.txt", "feature work", "add b.txt")
+    attest_head(repo)
+
+    git(repo, "checkout", "main")
+    commit_file(repo, "c.txt", "main work", "advance main")
+
+    git(repo, "checkout", "feature")
+    git(repo, "rebase", "main")
+
+    # In head mode: rebase rewrote parent SHA, so old attestation commit does not attest new parent
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert not ok
+    assert "does not attest its parent" in lines[0]
+
+    # In history mode: historical attestation remains valid in history log
+    ok_hist, lines_hist = verify_signoff.check_history(str(repo), "HEAD", require=1)
+    assert ok_hist, lines_hist
+    assert "1 valid attestation(s)" in lines_hist[0]
+
+
+def test_head_mode_fails_on_squash_merge_onto_advanced_base_without_resignoff(repo):
+    git(repo, "checkout", "-b", "feature")
+    commit_file(repo, "b.txt", "feature work", "add b.txt")
+    reviewed, tree = attest_head(repo)
+
+    payload = attestation_message(reviewed, tree)
+    git(repo, "notes", "--ref=refs/notes/signoff", "add", "-m", payload, reviewed)
+    git(repo, "notes", "--ref=refs/notes/signoff", "add", "-m", payload, tree)
+
+    git(repo, "checkout", "main")
+    commit_file(repo, "c.txt", "main work", "advance main")
+
+    git(repo, "merge", "--squash", "feature")
+    git(repo, "commit", "-m", "Squash merge feature")
+
+    # In head mode: squashed tree combines base + PR changes, so tree SHA lookup misses
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert not ok
+    assert "no valid attestation covers commit" in lines[0]
+
+    # In history mode: note on reviewed commit remains valid in history
+    ok_hist, lines_hist = verify_signoff.check_history(str(repo), "HEAD", require=1)
+    assert ok_hist, lines_hist
+    assert "1 valid attestation(s)" in lines_hist[0]
+
+

@@ -39,7 +39,7 @@ def glob_matches(pattern, value):
     return subprocess.run(["bash", "-c", script, "bash", value]).returncode == 0
 
 
-@pytest.mark.parametrize("pin", ["verify-v1", "verify-v2", "verify-v1.1"])
+@pytest.mark.parametrize("pin", ["verify-v1", "verify-v2", "verify-v1.1", "verify-v1.2"])
 def test_pin_tags_are_not_rejected_as_release_tags(pin):
     assert not glob_matches(guard_pattern(), pin), (
         f"tag.yml's release-tag guard rejects pin tag {pin!r}"

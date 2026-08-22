@@ -129,10 +129,26 @@ Signoff-Agent: harness=claude-code/2.x model=... reasoning=... interview=standar
 Verification survives squash merges via the reviewed **tree SHA** and the
 notes mirror — lookup order in [gsa-core.md §5](skills/signoff/specs/gsa-core.md).
 
-**Show it: the badge.** A two-minute CI check turns attestations into a
-visible claim — PRs fail until the branch ends in a valid attestation, and
-your README carries an **attested by humans** badge (the one at the top of
-this file). Copy-paste install: [`verify/`](verify/README.md).
+**Show it: the badge & CI gate.** A two-minute GitHub Actions check turns attestations into a visible, enforceable claim — PRs fail until the branch ends in a valid attestation, and your README carries an **attested by humans** badge (the one at the top of this file):
+
+```yaml
+# .github/workflows/signoff.yml
+name: attested by humans
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+jobs:
+  verify-signoff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history — attestations live in it
+      - uses: jerrylin96/signoff/verify@verify-v1.2
+```
+
+Supports standard merge strategies: **2-parent PR merges** (verifies clean merge tree & attested PR head in `head` mode), **fast-forward merges** (`head` mode), **squash merges** (`history` mode; in `head` mode when base is unchanged), and **rebase merges** (`history` mode; in `head` mode, re-run `/signoff` after rebase). Enforce strictly with preconfigured [`ruleset.json`](verify/ruleset.json). Full setup & badge markdown: [`verify/`](verify/README.md).
 
 The protocol is harness-, model-, and vendor-neutral. The skill is
 prompt-driven and self-contained; the optional `signoff-mcp` server adds

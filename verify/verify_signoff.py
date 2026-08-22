@@ -15,6 +15,9 @@ Two modes:
            its own parent's commit and tree (the normal shape of a branch
            ending in /signoff); a non-empty attestation commit fails, so
            trailers cannot smuggle unreviewed changes past the gate.
+           For 2-parent merge commits (e.g. GitHub standard PR merges),
+           verifies that HEAD^{tree} cleanly matches git merge-tree HEAD^1 HEAD^2
+           and that the merged PR head HEAD^2 is validly attested.
   history  Verify that a ref's history carries valid attestations — the
            repo-badge check. Passes when at least --require valid
            attestations (default 1) are found.
@@ -37,7 +40,7 @@ NOTES_REF = "refs/notes/signoff"
 # into NOTES_REF force-overwrites attestation notes that have not been pushed
 # yet — gsa-core §5.1 forbids exactly that, and a reviewer who runs /signoff
 # offline and verifies before pushing would silently lose the record. This ref
-# is the only thing verification writes; NOTES_REF is read and never modified.
+# is the only ref verification writes; NOTES_REF is read and never modified.
 NOTES_FETCH_REF = "refs/notes/signoff-verify"
 SUBJECT_RE = re.compile(r"^\[SIGNOFF [0-9a-f]{7,40}\]: ")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -122,8 +125,9 @@ def note_payloads(repo, target):
 
 
 def check_head(repo, target):
-    """PR-gate check: is `target` (or, for an attestation commit, its parent)
-    attested? Returns (passed, lines-to-print)."""
+    """PR-gate check: is `target` (or, for an attestation commit, its parent,
+    or for a 2-parent merge commit, its attested PR head) attested?
+    Returns (passed, lines-to-print)."""
     commit = git(repo, "rev-parse", f"{target}^{{commit}}").stdout.strip()
     tree = git(repo, "rev-parse", f"{commit}^{{tree}}").stdout.strip()
     message = git(repo, "log", "-1", "--format=%B", commit).stdout
@@ -156,7 +160,6 @@ def check_head(repo, target):
     for note_target, how in ((commit, "note on commit"), (tree, "note on tree")):
         for payload in note_payloads(repo, note_target):
             candidates.append((how, payload))
-    candidates += history_payloads(repo, commit)
 
     for source, payload in candidates:
         trailers = parse_trailers(payload)
@@ -169,6 +172,54 @@ def check_head(repo, target):
                 f"PASS: {commit[:7]} attested via {source}",
                 f"  {describe(trailers)}",
             ]
+
+    parents = git(repo, "log", "-1", "--format=%P", commit, check=False).stdout.split()
+    if len(parents) > 2:
+        return False, [
+            f"FAIL: merge commit {commit[:7]} is an octopus merge with {len(parents)} parents "
+            "(only 2-parent merges supported for provenance verification)"
+        ]
+    if len(parents) == 2:
+        p1, p2 = parents[0], parents[1]
+        is_ancestor = git(repo, "merge-base", "--is-ancestor", p2, p1, check=False).returncode == 0
+        if is_ancestor:
+            return False, [
+                f"FAIL: merge commit {commit[:7]} PR head {p2[:7]} is an ancestor of base {p1[:7]}"
+            ]
+        mproc = git(repo, "merge-tree", "--write-tree", p1, p2, check=False)
+        if mproc.returncode != 0:
+            return False, [
+                f"FAIL: merge commit {commit[:7]} failed clean 3-way merge calculation between {p1[:7]} and {p2[:7]}"
+            ]
+        expected_tree = mproc.stdout.strip().splitlines()[0]
+        if expected_tree != tree:
+            return False, [
+                f"FAIL: merge commit {commit[:7]} tree does not match clean 3-way merge of parents "
+                f"{p1[:7]} and {p2[:7]} (manual conflict resolution or unreviewed changes introduced in merge)"
+            ]
+        ok2, lines2 = check_head(repo, p2)
+        if ok2:
+            return True, [
+                f"PASS: merge commit {commit[:7]} verified via attested PR head {p2[:7]}",
+                *[f"  {line}" for line in lines2],
+            ]
+        return False, [
+            f"FAIL: merge commit {commit[:7]} PR head {p2[:7]} is not attested",
+            *[f"  {line}" for line in lines2],
+        ]
+
+    for source, payload in history_payloads(repo, commit):
+        trailers = parse_trailers(payload)
+        if validate(trailers):
+            continue
+        if commit in trailers.get("Signoff-Reviewed-Commit-SHA", []) or tree in trailers.get(
+            "Signoff-Reviewed-Tree-SHA", []
+        ):
+            return True, [
+                f"PASS: {commit[:7]} attested via {source}",
+                f"  {describe(trailers)}",
+            ]
+
     return False, [
         f"FAIL: no valid attestation covers commit {commit[:7]} (or tree {tree[:7]})",
         "  Run /signoff on this branch before merging.",
