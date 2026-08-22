@@ -392,3 +392,30 @@ def test_head_mode_fails_on_rebase_onto_advanced_base_without_resignoff(repo):
     assert ok_hist, lines_hist
     assert "1 valid attestation(s)" in lines_hist[0]
 
+
+def test_head_mode_fails_on_squash_merge_onto_advanced_base_without_resignoff(repo):
+    git(repo, "checkout", "-b", "feature")
+    commit_file(repo, "b.txt", "feature work", "add b.txt")
+    reviewed, tree = attest_head(repo)
+
+    payload = attestation_message(reviewed, tree)
+    git(repo, "notes", "--ref=refs/notes/signoff", "add", "-m", payload, reviewed)
+    git(repo, "notes", "--ref=refs/notes/signoff", "add", "-m", payload, tree)
+
+    git(repo, "checkout", "main")
+    commit_file(repo, "c.txt", "main work", "advance main")
+
+    git(repo, "merge", "--squash", "feature")
+    git(repo, "commit", "-m", "Squash merge feature")
+
+    # In head mode: squashed tree combines base + PR changes, so tree SHA lookup misses
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert not ok
+    assert "no valid attestation covers commit" in lines[0]
+
+    # In history mode: note on reviewed commit remains valid in history
+    ok_hist, lines_hist = verify_signoff.check_history(str(repo), "HEAD", require=1)
+    assert ok_hist, lines_hist
+    assert "1 valid attestation(s)" in lines_hist[0]
+
+

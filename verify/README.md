@@ -72,8 +72,8 @@ repository's development pace.
 `verify_signoff.py` supports standard Git / GitHub merge workflows:
 
 - **Standard PR Merge (2-parent merge commit)**: When merging via GitHub's "Create a merge commit" button (or `git merge --no-ff`), `mode: head` verifies that `HEAD^{tree}` cleanly matches `git merge-tree --write-tree HEAD^1 HEAD^2` and that `HEAD^2` was validly attested. Any manual conflict resolution or unreviewed changes introduced during merge cause verification to fail.
-- **Squash Merge**: Survives in `mode: head` via the reviewed **Tree SHA** lookup in `refs/notes/signoff` (gsa-core §2.5).
 - **Fast-Forward Merge**: Preserves the attestation commit directly at the branch tip, passing `mode: head`.
+- **Squash Merge**: Survives in `mode: history` (attestation records reachable in history log). In `mode: head`, the reviewed **Tree SHA** lookup in `refs/notes/signoff` (gsa-core §2.5) passes if the base branch has not advanced; if the base has advanced, the squashed tree combines base and branch changes (a new code state), requiring `/signoff` to be re-run on the updated branch before merge.
 - **Rebase Merge**: Survives in `mode: history` (attestation commits reachable in history log). In `mode: head`, rebasing onto an advanced base rewrites commit SHAs, requiring `/signoff` to be re-run on the rebased branch before merge.
 
 Override with inputs:
