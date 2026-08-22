@@ -145,7 +145,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # full history — attestations live in it
-      - uses: jerrylin96/signoff/verify@verify-v1.1
+      - uses: jerrylin96/signoff/verify@verify-v1.2
 ```
 
 Works automatically across all standard merge strategies: **2-parent PR merges** (verifies clean merge tree & attested PR head), **squash merges** (tree SHA fallback), and **rebase merges**. Enforce strictly with preconfigured [`ruleset.json`](verify/ruleset.json). Full setup & badge markdown: [`verify/`](verify/README.md).

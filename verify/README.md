@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # full history — attestations live in it
-      - uses: jerrylin96/signoff/verify@verify-v1.1
+      - uses: jerrylin96/signoff/verify@verify-v1.2
 ```
 
 **2.** (Recommended) Enforce signoff before merge with the preconfigured GitHub Ruleset:
@@ -51,13 +51,10 @@ tags; a breaking change to the action's inputs or pass criteria would ship
 as `verify-v2`. Tracking `@main` works but couples your CI to this
 repository's development pace.
 
-> **If you pinned `@verify-v1`, move to `@verify-v1.1`.** `verify-v1`
-> predates a fix for a bug that could destroy attestation notes you had
-> created but not yet pushed: the verifier fetched origin's notes directly
-> into `refs/notes/signoff`, force-overwriting local ones, while still
-> reporting `PASS`. Verdicts are unaffected — only the note-handling side
-> effect — so the upgrade is drop-in. Because pins never move, `verify-v1`
-> keeps running the old behavior until you re-pin.
+> **If you pinned `@verify-v1` or `@verify-v1.1`, move to `@verify-v1.2`.** `verify-v1.2`
+> adds native 2-parent merge commit provenance verification for standard GitHub PR
+> merge workflows. `verify-v1.1` fixed unpushed local notes handling. Because pins never
+> move, earlier pins keep running older behavior until you re-pin.
 
 ## What it checks
 
@@ -79,7 +76,7 @@ repository's development pace.
 Override with inputs:
 
 ```yaml
-      - uses: jerrylin96/signoff/verify@verify-v1.1
+      - uses: jerrylin96/signoff/verify@verify-v1.2
         with:
           mode: history      # or: head
           target: main       # commit (head) or ref (history)
