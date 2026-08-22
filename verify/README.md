@@ -51,27 +51,30 @@ tags; a breaking change to the action's inputs or pass criteria would ship
 as `verify-v2`. Tracking `@main` works but couples your CI to this
 repository's development pace.
 
-> **If you pinned `@verify-v1` or `@verify-v1.1`, move to `@verify-v1.2`.** `verify-v1.2`
-> adds native 2-parent merge commit provenance verification for standard GitHub PR
-> merge workflows. `verify-v1.1` fixed unpushed local notes handling. Because pins never
-> move, earlier pins keep running older behavior until you re-pin.
+> **If you pinned `@verify-v1` or `@verify-v1.1`, move to `@verify-v1.2`.**
+> `verify-v1` predates a fix for a bug that could destroy attestation notes you had
+> created but not yet pushed: the verifier fetched origin's notes directly
+> into `refs/notes/signoff`, force-overwriting local ones, while still
+> reporting `PASS`. Verdicts are unaffected — only the note-handling side
+> effect. `verify-v1.2` adds native 2-parent merge commit provenance verification
+> for standard GitHub PR merge workflows. Because pins never move, earlier pins
+> keep running older behavior until you re-pin.
 
 ## What it checks
 
 | Event | Mode | Passes when |
 |---|---|---|
-| `pull_request` | `head` | The PR head commit is (or carries) a valid attestation: an **empty** attestation commit attesting its own parent's commit and tree — the normal shape of a branch ending in `/signoff`; a non-empty attestation commit fails, so trailers cannot smuggle unreviewed changes — or a notes/log/tree-SHA match for the head commit. |
-| `push` (or direct commit) | `head` | The target commit is attested via direct notes/commits, or if it is a **2-parent merge commit** (standard GitHub PR merge), it represents a clean 3-way merge (`git merge-tree --write-tree HEAD^1 HEAD^2`) where the merged PR branch head `HEAD^2` is validly attested. |
-| `push` / anything else | `history` | The ref's history carries at least `require` (default 1) structurally valid attestations. |
+| `pull_request` (or explicit `mode: head`) | `head` | The target commit is (or carries) a valid attestation: an **empty** attestation commit attesting its own parent's commit and tree — the normal shape of a branch ending in `/signoff`; a non-empty attestation commit fails, so trailers cannot smuggle unreviewed changes — a notes/log/tree-SHA match for the head commit, or (for a 2-parent PR merge commit) a clean 3-way merge (`git merge-tree --write-tree HEAD^1 HEAD^2`) where the merged PR branch head `HEAD^2` is validly attested. |
+| `push` / anything else (default `mode: auto`) | `history` | The ref's history carries at least `require` (default 1) structurally valid attestations. |
 
 ### Supported Merge Strategies
 
-`verify_signoff.py` works out of the box across all standard Git / GitHub merge workflows:
+`verify_signoff.py` supports standard Git / GitHub merge workflows:
 
 - **Standard PR Merge (2-parent merge commit)**: When merging via GitHub's "Create a merge commit" button (or `git merge --no-ff`), `mode: head` verifies that `HEAD^{tree}` cleanly matches `git merge-tree --write-tree HEAD^1 HEAD^2` and that `HEAD^2` was validly attested. Any manual conflict resolution or unreviewed changes introduced during merge cause verification to fail.
-- **Squash Merge**: Survives via the reviewed **Tree SHA** lookup in `refs/notes/signoff`.
-- **Rebase Merge**: Rebased attestation commits retain attestation trailers or notes attached to the commits/trees.
-- **Fast-Forward Merge**: Preserves the attestation commit directly at the branch tip.
+- **Squash Merge**: Survives in `mode: head` via the reviewed **Tree SHA** lookup in `refs/notes/signoff` (gsa-core §2.5).
+- **Fast-Forward Merge**: Preserves the attestation commit directly at the branch tip, passing `mode: head`.
+- **Rebase Merge**: Survives in `mode: history` (attestation commits reachable in history log). In `mode: head`, rebasing onto an advanced base rewrites commit SHAs, requiring `/signoff` to be re-run on the rebased branch before merge.
 
 Override with inputs:
 

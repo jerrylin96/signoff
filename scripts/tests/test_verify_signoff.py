@@ -356,3 +356,39 @@ def test_head_mode_fails_on_octopus_merge(repo):
     assert not ok
     assert f"FAIL: merge commit {merge_commit[:7]} is an octopus merge with 3 parents" in lines[0]
 
+
+def test_head_mode_passes_on_fast_forward_merge_with_attested_pr_head(repo):
+    git(repo, "checkout", "-b", "feature")
+    commit_file(repo, "b.txt", "feature work", "add b.txt")
+    attest_head(repo)
+    pr_head = git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    git(repo, "checkout", "main")
+    git(repo, "merge", "--ff-only", "feature")
+
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert ok, lines
+    assert pr_head[:7] in "\n".join(lines)
+
+
+def test_head_mode_fails_on_rebase_onto_advanced_base_without_resignoff(repo):
+    git(repo, "checkout", "-b", "feature")
+    commit_file(repo, "b.txt", "feature work", "add b.txt")
+    attest_head(repo)
+
+    git(repo, "checkout", "main")
+    commit_file(repo, "c.txt", "main work", "advance main")
+
+    git(repo, "checkout", "feature")
+    git(repo, "rebase", "main")
+
+    # In head mode: rebase rewrote parent SHA, so old attestation commit does not attest new parent
+    ok, lines = verify_signoff.check_head(str(repo), "HEAD")
+    assert not ok
+    assert "does not attest its parent" in lines[0]
+
+    # In history mode: historical attestation remains valid in history log
+    ok_hist, lines_hist = verify_signoff.check_history(str(repo), "HEAD", require=1)
+    assert ok_hist, lines_hist
+    assert "1 valid attestation(s)" in lines_hist[0]
+

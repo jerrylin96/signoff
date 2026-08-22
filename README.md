@@ -148,7 +148,7 @@ jobs:
       - uses: jerrylin96/signoff/verify@verify-v1.2
 ```
 
-Works automatically across all standard merge strategies: **2-parent PR merges** (verifies clean merge tree & attested PR head), **squash merges** (tree SHA fallback), and **rebase merges**. Enforce strictly with preconfigured [`ruleset.json`](verify/ruleset.json). Full setup & badge markdown: [`verify/`](verify/README.md).
+Supports standard merge strategies: **2-parent PR merges** (verifies clean merge tree & attested PR head in `head` mode), **squash merges** (tree SHA fallback in `head` mode), **fast-forward merges** (`head` mode), and **rebase merges** (`history` mode; in `head` mode, re-run `/signoff` after rebase). Enforce strictly with preconfigured [`ruleset.json`](verify/ruleset.json). Full setup & badge markdown: [`verify/`](verify/README.md).
 
 The protocol is harness-, model-, and vendor-neutral. The skill is
 prompt-driven and self-contained; the optional `signoff-mcp` server adds

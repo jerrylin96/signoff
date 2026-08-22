@@ -40,7 +40,7 @@ NOTES_REF = "refs/notes/signoff"
 # into NOTES_REF force-overwrites attestation notes that have not been pushed
 # yet — gsa-core §5.1 forbids exactly that, and a reviewer who runs /signoff
 # offline and verifies before pushing would silently lose the record. This ref
-# is the only thing verification writes; NOTES_REF is read and never modified.
+# is the only ref verification writes; NOTES_REF is read and never modified.
 NOTES_FETCH_REF = "refs/notes/signoff-verify"
 SUBJECT_RE = re.compile(r"^\[SIGNOFF [0-9a-f]{7,40}\]: ")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
