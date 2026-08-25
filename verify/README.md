@@ -11,7 +11,19 @@ git notes (`refs/notes/signoff`) on the commit and its tree, `[SIGNOFF *]`
 attestation commits in the log, and the tree-SHA fallback that survives
 squash merges.
 
-## Install (two minutes)
+## Install (60 seconds)
+
+### Option A: Zero-touch 1-line setup (Recommended)
+
+Run inside your repository root:
+```bash
+python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/main/init.py)"
+```
+This automatically scaffolds the workflow, selects your domain interview profile, configures the README badge, configures GitHub ruleset protection, and creates an initial green setup branch.
+
+---
+
+### Option B: Manual Setup
 
 **1.** Add `.github/workflows/signoff.yml` to your repository:
 

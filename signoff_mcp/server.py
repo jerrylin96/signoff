@@ -6,6 +6,7 @@ deterministic Git mechanics only.
 """
 
 import os
+import sys
 from dataclasses import asdict
 
 from mcp.server import MCPServer
@@ -95,8 +96,13 @@ def create_server(repo_path: str | None = None) -> MCPServer:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "init":
+        from signoff_mcp import init_cli
+
+        sys.exit(init_cli.main())
     create_server().run("stdio")
 
 
 if __name__ == "__main__":
     main()
+

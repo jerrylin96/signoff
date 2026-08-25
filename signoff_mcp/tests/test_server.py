@@ -45,3 +45,17 @@ def test_commit_without_prepare_reports_explicit_error(server):
                 {"tradeoffs": [], "risks": [], "user_email": "dev@example.com"},
             )
         )
+
+
+def test_server_init_subcommand(monkeypatch):
+    import sys
+    from unittest.mock import patch
+    from signoff_mcp import server as server_mod
+
+    monkeypatch.setattr(sys, "argv", ["signoff-mcp", "init", "--help"])
+    with patch("init.main", return_value=0) as mock_init:
+        with pytest.raises(SystemExit) as exc:
+            server_mod.main()
+        assert exc.value.code == 0
+        mock_init.assert_called_once()
+
