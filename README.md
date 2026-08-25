@@ -60,7 +60,7 @@ The script automatically:
 2. Scaffolds `.github/workflows/signoff.yml`, `.signoff/profile.md`, and `.claude/settings.json`.
 3. Injects the **attested by humans** badge into your `README.md`.
 4. Automates GitHub Ruleset protection (via `gh` CLI or a 1-click settings link).
-5. Creates feature branch `signoff/init` with an initial valid attestation commit so your setup PR is green immediately.
+5. Creates feature branch `signoff/init` with your scaffolded setup ready for you to run `/signoff` and merge.
 
 ---
 

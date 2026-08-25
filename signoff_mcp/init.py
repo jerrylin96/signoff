@@ -1,4 +1,4 @@
-"""Zero-touch standalone repository initializer for /signoff (Git Signoff Attestation).
+"""Zero-touch repository initializer for /signoff (Git Signoff Attestation).
 
 Scaffolds CI workflows, domain interview profiles, agent plugins, README badges,
 and GitHub ruleset enforcement.

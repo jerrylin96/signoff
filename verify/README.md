@@ -19,7 +19,7 @@ Run inside your repository root:
 ```bash
 python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/main/init.py)"
 ```
-This automatically scaffolds the workflow, selects your domain interview profile, configures the README badge, configures GitHub ruleset protection, and creates an initial green setup branch.
+This automatically scaffolds the workflow, selects your domain interview profile, configures the README badge, configures GitHub ruleset protection, and creates a setup branch ready for `/signoff`.
 
 ---
 

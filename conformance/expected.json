@@ -47,5 +47,10 @@
   "vectors/invalid-status.txt": {
     "valid": false,
     "problems_contain": ["Signoff-Status"]
+  },
+  "vectors/invalid-status-digest-mismatch.txt": {
+    "valid": false,
+    "problems_contain": ["status 'VERIFIED_BY_HUMAN' requires sha256 transcript digest"]
   }
 }
+

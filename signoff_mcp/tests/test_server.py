@@ -53,9 +53,23 @@ def test_server_init_subcommand(monkeypatch):
     from signoff_mcp import server as server_mod
 
     monkeypatch.setattr(sys, "argv", ["signoff-mcp", "init", "--help"])
-    with patch("init.main", return_value=0) as mock_init:
+    with patch("signoff_mcp.init.main", return_value=0) as mock_init:
         with pytest.raises(SystemExit) as exc:
             server_mod.main()
         assert exc.value.code == 0
         mock_init.assert_called_once()
+
+
+def test_server_help_flag(monkeypatch, capsys):
+    import sys
+    from signoff_mcp import server as server_mod
+
+    monkeypatch.setattr(sys, "argv", ["signoff-mcp", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        server_mod.main()
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    assert "usage: signoff-mcp" in captured.out
+    assert "init" in captured.out
+
 

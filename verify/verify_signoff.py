@@ -72,6 +72,9 @@ def parse_trailers(payload):
     return trailers
 
 
+DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
 def validate(trailers):
     """Structural validation of one attestation's trailers -> list of problems."""
     problems = []
@@ -91,7 +94,25 @@ def validate(trailers):
     for email in trailers.get("Signoff-Verified-By", []):
         if "@" not in email:
             problems.append(f"implausible Signoff-Verified-By {email!r}")
+
+    # Cross-field status vs transcript digest check (GSA §2.2)
+    statuses = trailers.get("Signoff-Status", [])
+    digests = trailers.get("Signoff-Transcript-Digest", [])
+    if "VERIFIED_BY_HUMAN" in statuses:
+        for d in digests:
+            if d == "unavailable":
+                problems.append("status 'VERIFIED_BY_HUMAN' requires sha256 transcript digest, got 'unavailable'")
+            elif not DIGEST_RE.match(d):
+                problems.append(f"malformed Signoff-Transcript-Digest {d!r}")
+    if "VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST" in statuses:
+        for d in digests:
+            if d != "unavailable":
+                problems.append(
+                    f"status 'VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST' requires 'unavailable' digest, got {d!r}"
+                )
+
     return problems
+
 
 
 def describe(trailers):
