@@ -204,7 +204,7 @@ def detect_git_context(start_dir: Optional[Path] = None) -> GitContext:
         current_branch = b_proc.stdout.strip()
 
     # 4. Default Branch Detection
-    default_branch = current_branch or "main"
+    default_branch = "main"
     origin_head_proc = subprocess.run(
         ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
         cwd=root,
@@ -214,15 +214,20 @@ def detect_git_context(start_dir: Optional[Path] = None) -> GitContext:
     if origin_head_proc.returncode == 0 and "/" in origin_head_proc.stdout.strip():
         default_branch = origin_head_proc.stdout.strip().split("/", 1)[1]
     else:
+        found_candidate = False
         candidates = (
             "main", "master", "trunk", "dev", "develop", "development",
             "staging", "release", "production",
         )
         for candidate in candidates:
-            check = subprocess.run(["git", "show-ref", "--verify", f"refs/heads/{candidate}"], cwd=root, capture_output=True)
-            if check.returncode == 0:
+            check_local = subprocess.run(["git", "show-ref", "--verify", f"refs/heads/{candidate}"], cwd=root, capture_output=True)
+            check_remote = subprocess.run(["git", "show-ref", "--verify", f"refs/remotes/origin/{candidate}"], cwd=root, capture_output=True)
+            if check_local.returncode == 0 or check_remote.returncode == 0:
                 default_branch = candidate
+                found_candidate = True
                 break
+        if not found_candidate:
+            default_branch = current_branch or "main"
 
     # 5. Remote Slug
     slug = None
@@ -543,13 +548,15 @@ def run_init(
         if proc.returncode != 0:
             raise RuntimeError(f"Failed to create branch '{target_branch}': {proc.stderr.strip()}")
     else:
-        # Check if default_branch resolves to a commit
         base_ref = ctx.default_branch
-        verify_base = subprocess.run(["git", "rev-parse", "--verify", f"{base_ref}^{{commit}}"], cwd=root, capture_output=True, text=True)
-        if verify_base.returncode == 0:
+        verify_local = subprocess.run(["git", "rev-parse", "--verify", f"{base_ref}^{{commit}}"], cwd=root, capture_output=True, text=True)
+        verify_remote = subprocess.run(["git", "rev-parse", "--verify", f"origin/{base_ref}^{{commit}}"], cwd=root, capture_output=True, text=True)
+        if verify_local.returncode == 0:
             proc = subprocess.run(["git", "checkout", "-b", target_branch, base_ref], cwd=root, capture_output=True, text=True)
+        elif verify_remote.returncode == 0:
+            proc = subprocess.run(["git", "checkout", "-b", target_branch, f"origin/{base_ref}"], cwd=root, capture_output=True, text=True)
         else:
-            print(f"  ℹ️  Notice: Base branch '{base_ref}' not found; branching '{target_branch}' from HEAD.")
+            print(f"  ℹ️  Notice: Base branch '{base_ref}' not found locally or on origin; branching '{target_branch}' from HEAD.")
             proc = subprocess.run(["git", "checkout", "-b", target_branch], cwd=root, capture_output=True, text=True)
             
         if proc.returncode != 0:
@@ -635,8 +642,8 @@ def main() -> int:
             non_interactive=args.non_interactive,
             open_browser=args.open_browser,
         )
-        print("\n[3/5] 📝 Scaffolded workflow, profile, and settings files.")
-        print(f"[4/5] 🌿 Created feature branch '{res.branch}' with scaffold commit.")
+        print(f"\n[3/5] 🌿 Created feature branch '{res.branch}' with scaffold commit.")
+        print("[4/5] 📝 Scaffolded workflow, profile, and settings files.")
         
         # Surfacing ruleset status
         if res.ruleset.status == "created":

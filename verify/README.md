@@ -17,7 +17,7 @@ squash merges.
 
 Run inside your repository root:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/main/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v1/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
 ```
 This automatically scaffolds the workflow, selects your domain interview profile, configures the README badge, configures GitHub ruleset protection, and creates a setup branch ready for `/signoff`.
 

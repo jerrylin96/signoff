@@ -471,6 +471,47 @@ def test_checkout_failure_leaves_tree_clean(temp_git_repo):
     assert status.strip() == ""
 
 
+def test_base_branch_origin_fallback(tmp_path):
+    # Setup upstream remote with main branch
+    origin_dir = tmp_path / "origin.git"
+    origin_dir.mkdir()
+    subprocess.run(["git", "init", "--bare", "-b", "main"], cwd=origin_dir, check=True, capture_output=True)
+
+    # Setup local clone
+    local_dir = tmp_path / "clone"
+    subprocess.run(["git", "clone", str(origin_dir), str(local_dir)], check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Dev"], cwd=local_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "dev@example.com"], cwd=local_dir, check=True)
+
+    # Initial commit on main and push
+    (local_dir / "README.md").write_text("# Origin Repo\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=local_dir, check=True)
+    subprocess.run(["git", "commit", "-m", "Base commit"], cwd=local_dir, check=True)
+    subprocess.run(["git", "push", "origin", "main"], cwd=local_dir, check=True)
+
+    # Create feature branch with unmerged commit, then delete local main
+    subprocess.run(["git", "checkout", "-b", "feature-x"], cwd=local_dir, check=True)
+    (local_dir / "feature.txt").write_text("unmerged feature commit", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.txt"], cwd=local_dir, check=True)
+    subprocess.run(["git", "commit", "-m", "Unmerged feature work"], cwd=local_dir, check=True)
+    subprocess.run(["git", "branch", "-D", "main"], cwd=local_dir, check=True)
+
+    # Run init while on feature-x
+    result = init.run_init(
+        repo_root=local_dir,
+        profile_id="software-general",
+        branch="signoff/init",
+        skip_ruleset=True,
+        non_interactive=True,
+    )
+    assert result.success is True
+    assert result.branch == "signoff/init"
+
+    # Verify signoff/init branched from origin/main, so feature.txt is NOT in signoff/init
+    assert not (local_dir / "feature.txt").exists()
+    log = subprocess.check_output(["git", "log", "--oneline"], cwd=local_dir, text=True)
+    assert "Unmerged feature work" not in log
+
 
 def test_profile_text_byte_parity():
     from signoff_mcp.profile import profile_block_digest
