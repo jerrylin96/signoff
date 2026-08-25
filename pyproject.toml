@@ -18,9 +18,6 @@ Repository = "https://github.com/jerrylin96/signoff"
 [project.scripts]
 signoff-mcp = "signoff_mcp.server:main"
 
-[tool.setuptools]
-py-modules = ["init"]
-
 [tool.setuptools.packages.find]
 include = ["signoff_mcp*"]
 exclude = ["signoff_mcp.tests*"]

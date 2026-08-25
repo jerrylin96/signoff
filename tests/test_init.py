@@ -512,3 +512,13 @@ def test_package_namespaced_init():
     assert hasattr(mcp_init, "run_init")
 
 
+def test_pyproject_does_not_package_top_level_init():
+    repo_root = Path(__file__).parent.parent
+    pyproject_content = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
+    assert "py-modules" not in pyproject_content
+    assert 'include = ["signoff_mcp*"]' in pyproject_content
+
+
+
+
+
