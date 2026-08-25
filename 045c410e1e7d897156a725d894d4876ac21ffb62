@@ -1,0 +1,17 @@
+[SIGNOFF 7467342]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-21T16:25:36Z
+Signoff-Base-SHA: 8ddd02a73aa38f98aeb72e82b90446ddde9a1756
+Signoff-Reviewed-Commit-SHA: 74673428a5615d516cc9d4a124b5a8967dd9ed5d
+Signoff-Reviewed-Tree-SHA: 045c410e1e7d897156a725d894d4876ac21ffb62
+Signoff-Harness-ID: antigravity-cli
+Signoff-Conversation-ID: 73c9c502-60c3-4bdb-bf48-cb9799803615
+Signoff-Transcript-Digest: sha256:37767a81e95b7167922e05684b88accfe720541c0073f05bd98064e6c5185d5f
+Signoff-Transcript-Bytes: 297751
+Signoff-Tradeoff: Strict status check policy requires PR branches to be updated with default branch before merge
+Signoff-Tradeoff: Standardized workflow job name on verify-signoff to prevent adopter namespace collisions
+Signoff-Risk: Ruleset enforcement on GitHub requires one-time manual import in repository settings
+Signoff-Verified-By: jerrylin247365@gmail.com
+Signoff-Agent: harness=antigravity-cli/N/A model=gemini-3.7-flash reasoning=N/A interview=standard/software-general

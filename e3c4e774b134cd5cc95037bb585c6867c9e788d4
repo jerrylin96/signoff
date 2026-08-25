@@ -1,0 +1,30 @@
+[SIGNOFF 6ddf384]: human comprehension and risk attestation
+
+Standard-intensity interview (Tier 1 under the adaptive classification matrix
+merged in PR #6: no Tier 2 content trigger, 2 files and 68 lines inside blast
+radius bounds), embedded software-general profile, no science signals. Four
+axes closed across five probes including two remediation re-probes: glob
+semantics of v[0-9]* versus v* and why fixing the pattern beats renaming the
+pin (the published verify/README snippet, and every future v-initial pin);
+the extracted-guard test's loud failure path and its uncovered surface (it
+never executes ensure_tag's git logic); and an empirical walk of three
+edge-case tag names, which surfaced that v2-verify is refused by the fix
+itself — ruled an accepted namespace boundary rather than an oversight.
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-18T23:32:04Z
+Signoff-Base-SHA: 9130dc9d5d206d33ed7cc53979a64eca889b2618
+Signoff-Reviewed-Commit-SHA: 6ddf3845687a585f4adf9fde594933f04c50b8cb
+Signoff-Reviewed-Tree-SHA: e3c4e774b134cd5cc95037bb585c6867c9e788d4
+Signoff-Harness-ID: claude-code
+Signoff-Conversation-ID: 18df82ba-1f44-5daf-bb43-86fb80cf1e09
+Signoff-Transcript-Digest: sha256:b7d758ba06b7430d2872224769740012ec9b8a2272e6f28f88cddc666deadd18
+Signoff-Transcript-Bytes: 2492459
+Signoff-Tradeoff: v[0-9]* reserves the v<digit> namespace to release.yml, so a pin named v2-verify is still refused — a deliberate split preventing tag.yml/release.yml collision, failing loudly with exit 1 and remedied by naming the pin outside the release namespace
+Signoff-Tradeoff: the regression test extracts and evaluates only the guard glob and the PINS list; it does not execute ensure_tag's git logic, so a typo in ls-remote/tag/push stays uncaught by CI and would surface post-merge in Actions
+Signoff-Risk: release-shaped names that evade the glob (V0.3.0, release-v1.0) are created as pin tags if dispatched; the mitigation is write-permission gating plus never-move semantics, not the guard itself
+Signoff-Risk: verify-v1 does not exist on origin until this merges and the tag.yml run succeeds, so verify/README on main currently documents a pin adopters cannot resolve
+Signoff-Risk: the suite carries one pre-existing unrelated failure (test_live_notes_mirror_production_vector, a duplicated payload in the production vector's tree note on origin, predating this session), deliberately left for separate work rather than folded into this fix
+Signoff-Verified-By: jlin404@bu.edu
+Signoff-Agent: harness=claude-code/2.1.42 model=claude-opus-5 reasoning=high interview=standard/software-general

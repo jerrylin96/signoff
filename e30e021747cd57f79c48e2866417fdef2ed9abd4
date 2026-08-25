@@ -1,0 +1,17 @@
+[SIGNOFF 831904d]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-22T03:46:56Z
+Signoff-Base-SHA: a88ba7f0c9a7ed4101dbe638c49d1c5dda090211
+Signoff-Reviewed-Commit-SHA: 831904db496db90cc70cd43ff1ee5ed583567de2
+Signoff-Reviewed-Tree-SHA: e30e021747cd57f79c48e2866417fdef2ed9abd4
+Signoff-Harness-ID: antigravity-cli
+Signoff-Conversation-ID: a50c11c3-ab52-473f-8724-97b8e3b4fbbd
+Signoff-Transcript-Digest: sha256:eb4e1c7837a34d844986985c54308f3ba400157939ea523bca064e559db34d22
+Signoff-Transcript-Bytes: 439907
+Signoff-Tradeoff: Reject octopus merges (>2 parents) in head mode
+Signoff-Tradeoff: Rebasing or squashing onto advanced base creates new unreviewed composite tree requiring fresh signoff in head mode
+Signoff-Risk: none
+Signoff-Verified-By: jerrylin247365@gmail.com
+Signoff-Agent: harness=antigravity-cli/N/A model=gemini-3.7-flash-high reasoning=N/A interview=standard/software-general
