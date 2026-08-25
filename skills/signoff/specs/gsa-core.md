@@ -57,6 +57,8 @@ Signoff-Agent: harness=<harness-id>/<version|N/A> model=<model-id|N/A> reasoning
 
 *(Note: `Signoff-Status` is derived deterministically by the MCP server; callers CANNOT override status string directly.)*
 
+**Transcript Outcome & Status Cross-Field Rule:** An attestation MUST record its transcript outcome explicitly: `VERIFIED_BY_HUMAN` requires a well-formed `sha256:<64-hex>` `Signoff-Transcript-Digest` (and matching byte count); when no transcript bytes were captured or resolved, the digest MUST be `unavailable` and the status MUST be `VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST`. An attestation omitting the digest trailer or pairing `VERIFIED_BY_HUMAN` with `unavailable` is invalid under either status.
+
 ### 2.3 Field Rules & Conventions
 - **Trailer keys are case-sensitive** and MUST be written exactly as shown in §2.1 (`Signoff-Spec-Version`, `Signoff-Reviewed-Tree-SHA`, …). Verifiers MUST NOT match case variants: a case-variant key is not that trailer, so a payload whose mandatory trailers appear only in variant casing is invalid. (Clarified after two implementations disagreed; the conformance suite pins this via `invalid-lowercase-keys.txt`.)
 - `Signoff-Spec-Version`: `1.0` (standalone machine-parsable protocol version).

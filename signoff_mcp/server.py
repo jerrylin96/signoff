@@ -6,6 +6,7 @@ deterministic Git mechanics only.
 """
 
 import os
+import sys
 from dataclasses import asdict
 
 from mcp.server import MCPServer
@@ -95,8 +96,22 @@ def create_server(repo_path: str | None = None) -> MCPServer:
 
 
 def main() -> None:
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "init":
+            from signoff_mcp import init_cli
+
+            sys.exit(init_cli.main())
+        elif sys.argv[1] in ("-h", "--help"):
+            print("usage: signoff-mcp [init] [options]\n")
+            print("Deterministic MCP server mechanics for Git Signoff Attestations (GSA).\n")
+            print("commands:")
+            print("  init    Zero-touch repository initializer (scaffolds workflow, profile, ruleset)")
+            print("  (none)  Runs stdio MCP server for agent harnesses\n")
+            sys.exit(0)
     create_server().run("stdio")
 
 
 if __name__ == "__main__":
     main()
+
+

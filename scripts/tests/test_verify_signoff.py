@@ -33,6 +33,7 @@ def attestation_message(reviewed_sha, tree_sha, spec_version="1.0"):
         "Signoff-Status: VERIFIED_BY_HUMAN\n"
         f"Signoff-Reviewed-Commit-SHA: {reviewed_sha}\n"
         f"Signoff-Reviewed-Tree-SHA: {tree_sha}\n"
+        "Signoff-Transcript-Digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
         "Signoff-Verified-By: tester@example.com\n"
     )
 

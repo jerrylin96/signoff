@@ -22,6 +22,8 @@ synthetic examples:
 | `invalid-lowercase-keys.txt` | synthetic | trailer keys are case-sensitive (§2.3) — case-variant keys are not the mandatory trailers |
 | `invalid-malformed-tree-sha.txt` | real attestation `[SIGNOFF 2c1c0b7]` | non-40-hex SHA rejection |
 | `invalid-status.txt` | synthetic | status outside the §2.2 enum |
+| `invalid-status-digest-mismatch.txt` | synthetic | `VERIFIED_BY_HUMAN` with `unavailable` digest (§2.2 cross-field enforcement) |
+| `invalid-missing-transcript-digest.txt` | synthetic | `VERIFIED_BY_HUMAN` with omitted transcript digest (§2.2 enforcement) |
 
 Scope notes:
 

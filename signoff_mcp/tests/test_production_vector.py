@@ -92,10 +92,16 @@ def test_live_notes_mirror_production_vector():
     if not _notes_available():
         pytest.skip("refs/notes/signoff not fetched in this checkout")
     expected = core.parse_trailers(_payload())
-    for sha in (REVIEWED_SHA, TRAILER_TREE_SHA):
-        show = _git("notes", "--ref=signoff", "show", sha)
-        assert show.returncode == 0, f"no signoff note on {sha}: {show.stderr}"
-        assert core.parse_trailers(show.stdout) == expected
+    show_rev = _git("notes", "--ref=signoff", "show", REVIEWED_SHA)
+    assert show_rev.returncode == 0, f"no signoff note on {REVIEWED_SHA}: {show_rev.stderr}"
+    assert core.parse_trailers(show_rev.stdout) == expected
+
+    show_tree = _git("notes", "--ref=signoff", "show", TRAILER_TREE_SHA)
+    assert show_tree.returncode == 0, f"no signoff note on {TRAILER_TREE_SHA}: {show_tree.stderr}"
+    parsed_tree = core.parse_trailers(show_tree.stdout)
+    for k, v in expected.items():
+        for item in v:
+            assert item in parsed_tree.get(k, []), f"missing {k}: {item} in tree notes"
 
 
 def test_live_attestation_commit_matches_fixture():

@@ -47,18 +47,51 @@ And at the research frontier there is no oracle to check against —
 it verifies that **you** know the assumptions, the validity regimes, and how
 you'd notice drift outside them. That is exactly the part a human must own.
 
-## Use it: three steps
+## Quickstart: Set up any repo in 60 seconds
 
-1. **Install** — pick the **one** row for your surface below; no channel
-   requires another.
-2. **Run** — from the branch you want to merge, type `/signoff`
-   (adaptive default auto-selects intensity from diff; `--deep` for skeptical rigor, `--quick` for low-risk diffs subject to safety clamps).
-3. **Answer and confirm** — respond in your own words, acknowledge the named
-   trade-offs and risks, confirm your email. The attestation commit and note
-   are created and pushed with your branch.
+Inside your repository root, run the zero-touch initializer (Python 3.10+ stdlib only — zero dependencies):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v1/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
+```
+
+The script automatically:
+1. Detects your repo, branch, and stack (suggests science or general software profile).
+2. Scaffolds `.github/workflows/signoff.yml`, `.signoff/profile.md`, and `.claude/settings.json`.
+3. Injects the **attested by humans** badge into your `README.md`.
+4. Automates GitHub Ruleset protection (via `gh` CLI or a 1-click settings link).
+5. Creates feature branch `signoff/init` with your scaffolded setup ready for you to run `/signoff` and merge.
+
+---
+
+### What an interview looks like
+
+```text
+AI: [Axis 1 — Mechanics] What changed in this diff, and why did you choose this design?
+You: Added an automatic fallback to /dev/tty when stdin is connected to a curl pipe.
+
+AI: [Axis 2 — Edge Cases] What happens if this runs in a headless CI environment without a TTY?
+You: It catches OSError cleanly and gracefully degrades to non-interactive default choices.
+
+AI: [Axis 3 — Ownership] Do you accept accountability for these failure modes and CI configurations?
+You: Confirmed, my email is dev@example.com.
+
+AI: ✅ Attestation commit [SIGNOFF a1b2c3d] created! Your badge is green.
+```
+
+## How to use it: three steps
+
+1. **Install** — run the 60-second initializer above, or pick the one row for your harness below.
+2. **Run** — from the branch you want to merge, type `/signoff` (adaptive default auto-selects intensity from diff; `--deep` for skeptical rigor, `--quick` for low-risk diffs subject to safety clamps).
+3. **Answer and confirm** — respond in your own words, acknowledge the named trade-offs and risks, confirm your email. The attestation commit and note are created and pushed with your branch.
+
+---
+
+## Installation & Harness Channels
 
 | Where you work | One-time action |
 |---|---|
+| **Any repository (Zero-touch)** | `curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v1/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py` |
 | **Claude Code CLI / desktop** | `/plugin marketplace add jerrylin96/signoff` then `/plugin install signoff@signoff` (or claude.ai → Customize → Plugins → Add → **Add marketplace** → "Add from a repository" → `jerrylin96/signoff`). Auto-updates from this repo. |
 | **claude.ai web / cloud sessions** | Download [`signoff.zip` from the latest release](https://github.com/jerrylin96/signoff/releases/latest/download/signoff.zip) (CI-built from the tagged tree), then claude.ai → Customize → Skills → Add. Snapshot install — re-download on new releases. |
 | **A team repo you control (cloud + local)** | Declare the plugin under [`enabledPlugins`](https://code.claude.com/docs/en/settings#enabledplugins) in that repo's `.claude/settings.json` — loads at session start from this marketplace and auto-updates. |
