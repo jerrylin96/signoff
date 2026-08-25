@@ -66,6 +66,9 @@ def test_validate_slug():
     assert init.is_valid_slug("org.name/repo-123_4") is True
     assert init.is_valid_slug("owner/repo;echo bad") is False
     assert init.is_valid_slug("owner/../repo") is False
+    assert init.is_valid_slug("../foo") is False
+    assert init.is_valid_slug("foo/..") is False
+    assert init.is_valid_slug("foo/bar..baz") is False
     assert init.is_valid_slug("") is False
 
 
@@ -175,6 +178,15 @@ def test_merge_claude_settings_existing(temp_git_repo):
     assert data["theme"] == "dark"
     assert "other-plugin" in data["enabledPlugins"]
     assert "signoff@signoff" in data["enabledPlugins"]
+
+
+def test_merge_claude_settings_non_dict(temp_git_repo):
+    claude_dir = temp_git_repo / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / "settings.json").write_text(json.dumps(["invalid", "list"]), encoding="utf-8")
+    init.merge_claude_settings(temp_git_repo)
+    data = json.loads((claude_dir / "settings.json").read_text(encoding="utf-8"))
+    assert data.get("enabledPlugins") == ["signoff@signoff"]
 
 
 def test_inject_readme_badge_under_h1(temp_git_repo):
@@ -421,6 +433,8 @@ def test_end_to_end_unborn_head(tmp_path):
         non_interactive=True,
     )
     assert result.success is True
+    assert result.branch == "main"
+    assert result.pr_url is None
     assert (repo / ".github" / "workflows" / "signoff.yml").is_file()
     assert (repo / ".signoff" / "profile.md").is_file()
     assert (repo / ".claude" / "settings.json").is_file()

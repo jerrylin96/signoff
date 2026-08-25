@@ -132,9 +132,19 @@ class InitResult:
 
 
 def is_valid_slug(slug: str) -> bool:
-    if not slug:
+    if not slug or "/" not in slug:
         return False
-    return bool(re.match(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", slug))
+    parts = slug.split("/")
+    if len(parts) != 2:
+        return False
+    owner, repo = parts
+    if not owner or not repo:
+        return False
+    if owner in (".", "..") or repo in (".", "..") or ".." in owner or ".." in repo:
+        return False
+    if not re.match(r"^[A-Za-z0-9_.-]+$", owner) or not re.match(r"^[A-Za-z0-9_.-]+$", repo):
+        return False
+    return True
 
 
 def parse_github_slug(url: str) -> Optional[str]:
@@ -281,7 +291,9 @@ def merge_claude_settings(repo_root: Path) -> Path:
         try:
             content = settings_file.read_text(encoding="utf-8").strip()
             if content:
-                data = json.loads(content)
+                loaded = json.loads(content)
+                if isinstance(loaded, dict):
+                    data = loaded
         except Exception:
             data = {}
             
@@ -511,8 +523,10 @@ def run_init(
         inject_readme_badge(root, slug=effective_slug)
 
     # Step 4: Checkout target branch
-    target_branch = resolve_branch_name(root, branch, non_interactive=non_interactive)
-    if not ctx.is_unborn:
+    if ctx.is_unborn:
+        target_branch = ctx.current_branch or ctx.default_branch
+    else:
+        target_branch = resolve_branch_name(root, branch, non_interactive=non_interactive)
         subprocess.run(["git", "checkout", "-b", target_branch], cwd=root, check=True, capture_output=True)
 
     # Stage and commit
@@ -571,7 +585,11 @@ Signoff-Agent: harness=signoff-init/1.0 model=N/A reasoning=N/A interview=cursor
         skip_ruleset=skip_ruleset,
     )
 
-    pr_url = f"https://github.com/{effective_slug}/compare/{ctx.default_branch}...{target_branch}?expand=1" if effective_slug else None
+    pr_url = (
+        f"https://github.com/{effective_slug}/compare/{ctx.default_branch}...{target_branch}?expand=1"
+        if effective_slug and not ctx.is_unborn and target_branch != ctx.default_branch
+        else None
+    )
 
     return InitResult(
         success=True,
@@ -615,12 +633,15 @@ def main() -> int:
         print("\n" + "=" * 60)
         print("✅ Signoff initialization complete!")
         print("=" * 60)
-        print(f"\nBranch created: {res.branch}")
+        print(f"\nBranch: {res.branch}")
         print("\nNext Steps:")
-        print(f"  1. Push branch: git push origin {res.branch}")
-        print("  2. Push notes:  git push origin refs/notes/signoff")
         if res.pr_url:
+            print(f"  1. Push branch: git push origin {res.branch}")
+            print("  2. Push notes:  git push origin refs/notes/signoff")
             print(f"  3. Open PR:     {res.pr_url}")
+        else:
+            print(f"  1. Push branch: git push -u origin {res.branch}")
+            print("  2. Push notes:  git push origin refs/notes/signoff")
         return 0
     except Exception as e:
         print(f"\n❌ Error during initialization: {e}", file=sys.stderr)
