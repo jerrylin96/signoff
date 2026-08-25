@@ -544,7 +544,7 @@ def run_init(
     # Step 2: Checkout target branch FIRST before scaffolding any files
     target_branch = resolve_branch_name(root, branch)
     if ctx.is_unborn:
-        proc = subprocess.run(["git", "checkout", "-b", target_branch], cwd=root, capture_output=True, text=True)
+        proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch], cwd=root, capture_output=True, text=True)
         if proc.returncode != 0:
             raise RuntimeError(f"Failed to create branch '{target_branch}': {proc.stderr.strip()}")
     else:
@@ -552,12 +552,12 @@ def run_init(
         verify_local = subprocess.run(["git", "rev-parse", "--verify", f"{base_ref}^{{commit}}"], cwd=root, capture_output=True, text=True)
         verify_remote = subprocess.run(["git", "rev-parse", "--verify", f"origin/{base_ref}^{{commit}}"], cwd=root, capture_output=True, text=True)
         if verify_local.returncode == 0:
-            proc = subprocess.run(["git", "checkout", "-b", target_branch, base_ref], cwd=root, capture_output=True, text=True)
+            proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch, base_ref], cwd=root, capture_output=True, text=True)
         elif verify_remote.returncode == 0:
-            proc = subprocess.run(["git", "checkout", "-b", target_branch, f"origin/{base_ref}"], cwd=root, capture_output=True, text=True)
+            proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch, f"origin/{base_ref}"], cwd=root, capture_output=True, text=True)
         else:
             print(f"  ℹ️  Notice: Base branch '{base_ref}' not found locally or on origin; branching '{target_branch}' from HEAD.")
-            proc = subprocess.run(["git", "checkout", "-b", target_branch], cwd=root, capture_output=True, text=True)
+            proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch], cwd=root, capture_output=True, text=True)
             
         if proc.returncode != 0:
             raise RuntimeError(f"Failed to create branch '{target_branch}': {proc.stderr.strip()}")

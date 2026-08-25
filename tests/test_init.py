@@ -384,6 +384,11 @@ def test_end_to_end_init(temp_git_repo):
     assert "chore: scaffold git signoff attestation" in head_msg
     assert "[SIGNOFF " not in head_msg
 
+    # Verify setup branch has no upstream tracking set
+    up = subprocess.run(["git", "rev-parse", "--abbrev-ref", "signoff/init@{upstream}"], cwd=temp_git_repo, capture_output=True, text=True)
+    assert up.returncode != 0
+
+
 
 def test_base_branch_safety(temp_git_repo):
     # Switch to a feature branch and create unmerged commit
@@ -511,6 +516,11 @@ def test_base_branch_origin_fallback(tmp_path):
     assert not (local_dir / "feature.txt").exists()
     log = subprocess.check_output(["git", "log", "--oneline"], cwd=local_dir, text=True)
     assert "Unmerged feature work" not in log
+
+    # Verify setup branch does NOT track origin/main
+    up = subprocess.run(["git", "rev-parse", "--abbrev-ref", "signoff/init@{upstream}"], cwd=local_dir, capture_output=True, text=True)
+    assert up.returncode != 0, "setup branch must not track origin/main or any default branch"
+
 
 
 def test_profile_text_byte_parity():
