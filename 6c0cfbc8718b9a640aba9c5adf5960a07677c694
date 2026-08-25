@@ -1,0 +1,17 @@
+[SIGNOFF 6c0cfbc]: add zero-touch repository initializer and verifier integrity checks
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Base-SHA: 4762e67d138ba1f7afcd8f53a85f816c44b6e796
+Signoff-Reviewed-Commit-SHA: 6c0cfbc8718b9a640aba9c5adf5960a07677c694
+Signoff-Reviewed-Tree-SHA: b0321977e25b5ff5bd90890a30672a0e92e838e2
+Signoff-Harness-ID: antigravity
+Signoff-Conversation-ID: 57578120-f524-4fad-8505-3eeadd59d4bd
+Signoff-Transcript-Digest: sha256:a24703d918a1a2e5f2231e389584c5bfcf62e2df693aa5ad1b10832fe7a49d33
+Signoff-Transcript-Bytes: 875154
+Signoff-Tradeoff: standalone init.py is mirrored at repo root with byte-parity tests for zero-dependency curl onboarding
+Signoff-Tradeoff: existing modifications to allowlisted scaffolding files (README.md, .claude/settings.json) are staged into initial scaffold commit
+Signoff-Risk: environments lacking gh CLI auth or permissions require manual upload of .signoff/ruleset.json
+Signoff-Risk: setup PR branch begins with an un-attested scaffold commit requiring human /signoff before merging to main
+Signoff-Verified-By: jerrylin247365@gmail.com
+Signoff-Agent: harness=antigravity/N/A model=gemini-2.5-pro reasoning=high interview=skeptical/software-general
