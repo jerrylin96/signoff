@@ -51,6 +51,9 @@
   "vectors/invalid-status-digest-mismatch.txt": {
     "valid": false,
     "problems_contain": ["status 'VERIFIED_BY_HUMAN' requires sha256 transcript digest"]
+  },
+  "vectors/invalid-missing-transcript-digest.txt": {
+    "valid": false,
+    "problems_contain": ["status 'VERIFIED_BY_HUMAN' requires a Signoff-Transcript-Digest"]
   }
 }
-

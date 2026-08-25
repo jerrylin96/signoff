@@ -8,8 +8,6 @@ Signoff-Reviewed-Commit-SHA: 453c633078ecdd82d93c33eefac4d5f4cbe2ef55
 Signoff-Reviewed-Tree-SHA: 83679c5222ef2c7a7b8e5c83bc56c526d7f95567
 Signoff-Harness-ID: antigravity-cli
 Signoff-Conversation-ID: d079fa80-516d-41d5-8e76-8b6d79dbd3c9
-Signoff-Transcript-Digest: unavailable
-Signoff-Transcript-Bytes: unavailable
 Signoff-Tradeoff: none
 Signoff-Risk: none
 Signoff-Verified-By: dev@example.com

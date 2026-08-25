@@ -163,7 +163,9 @@ def test_merge_claude_settings_new(temp_git_repo):
     assert settings_file.is_file()
     data = json.loads(settings_file.read_text(encoding="utf-8"))
     assert data.get("enabledPlugins", {}).get("signoff@signoff") is True
-    assert data.get("extraKnownMarketplaces", {}).get("signoff") == "jerrylin96/signoff"
+    assert data.get("extraKnownMarketplaces", {}).get("signoff") == {
+        "source": {"source": "github", "repo": "jerrylin96/signoff"}
+    }
 
 
 def test_merge_claude_settings_existing(temp_git_repo):
@@ -383,7 +385,33 @@ def test_end_to_end_init(temp_git_repo):
     assert "[SIGNOFF " not in head_msg
 
 
+def test_base_branch_safety(temp_git_repo):
+    # Switch to a feature branch and create unmerged commit
+    subprocess.run(["git", "checkout", "-b", "feature-wip"], cwd=temp_git_repo, check=True)
+    (temp_git_repo / "wip.txt").write_text("unmerged work", encoding="utf-8")
+    subprocess.run(["git", "add", "wip.txt"], cwd=temp_git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "WIP commit"], cwd=temp_git_repo, check=True)
+    
+    # Run init while on feature-wip
+    result = init.run_init(
+        repo_root=temp_git_repo,
+        profile_id="domain-science",
+        branch="signoff/init",
+        slug="example-org/test-project",
+        skip_ruleset=True,
+        non_interactive=True,
+    )
+    assert result.branch == "signoff/init"
+    
+    # Verify signoff/init was branched from main, so wip.txt is NOT in signoff/init
+    assert not (temp_git_repo / "wip.txt").exists()
+    log = subprocess.check_output(["git", "log", "--oneline"], cwd=temp_git_repo, text=True)
+    assert "WIP commit" not in log
+
+
 def test_profile_text_byte_parity():
+    from signoff_mcp.profile import profile_block_digest
+
     repo_root = Path(__file__).parent.parent
     for pid in ("domain-science", "software-general"):
         profile_file = repo_root / "skills" / "signoff" / "profiles" / f"{pid}.md"
@@ -401,9 +429,16 @@ def test_profile_text_byte_parity():
         shipped_block = "".join(block_lines)
         embedded_block = init.PROFILES[pid]
         assert shipped_block == embedded_block
-        assert init.profile_block_digest(shipped_block.encode("utf-8")) == init.profile_block_digest(
+        assert profile_block_digest(shipped_block.encode("utf-8")) == profile_block_digest(
             embedded_block.encode("utf-8")
         )
+
+
+def test_init_scripts_byte_parity():
+    repo_root = Path(__file__).parent.parent
+    root_init = (repo_root / "init.py").read_text(encoding="utf-8")
+    pkg_init = (repo_root / "signoff_mcp" / "init.py").read_text(encoding="utf-8")
+    assert root_init == pkg_init
 
 
 def test_package_namespaced_init():
@@ -412,4 +447,5 @@ def test_package_namespaced_init():
 
     assert init_cli.init is mcp_init
     assert hasattr(mcp_init, "run_init")
+
 

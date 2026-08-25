@@ -1,4 +1,4 @@
-"""Zero-touch standalone repository initializer for /signoff (Git Signoff Attestation).
+"""Zero-touch repository initializer for /signoff (Git Signoff Attestation).
 
 Scaffolds CI workflows, domain interview profiles, agent plugins, README badges,
 and GitHub ruleset enforcement.
@@ -7,7 +7,6 @@ and GitHub ruleset enforcement.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import shutil
@@ -309,11 +308,11 @@ def merge_claude_settings(repo_root: Path) -> Path:
             except json.JSONDecodeError as e:
                 raise RuntimeError(f"Failed to parse existing {settings_file}: {e}")
             
-    # Schema: extraKnownMarketplaces and enabledPlugins object map
+    # Schema: extraKnownMarketplaces nested object and enabledPlugins object map
     marketplaces = data.get("extraKnownMarketplaces", {})
     if not isinstance(marketplaces, dict):
         marketplaces = {}
-    marketplaces.setdefault("signoff", "jerrylin96/signoff")
+    marketplaces.setdefault("signoff", {"source": {"source": "github", "repo": "jerrylin96/signoff"}})
     data["extraKnownMarketplaces"] = marketplaces
 
     plugins = data.get("enabledPlugins", {})
@@ -392,18 +391,24 @@ def ensure_clean_working_tree(repo_root: Path, allow_dirty: bool = False):
         "README.md",
     )
     unrelated_changes = []
+    allowlisted_modifications = []
     for raw_line in status.splitlines():
         if not raw_line:
             continue
         path_part = raw_line[3:].strip()
         if path_part.startswith('"') and path_part.endswith('"'):
             path_part = path_part[1:-1]
-        if not any(path_part == p or path_part.startswith(p) for p in signoff_prefixes):
+        if any(path_part == p or path_part.startswith(p) for p in signoff_prefixes):
+            allowlisted_modifications.append(path_part)
+        else:
             unrelated_changes.append(raw_line)
 
     if unrelated_changes:
         unrelated_str = "\n".join(unrelated_changes)
         raise RuntimeError(f"Working tree has uncommitted changes:\n{unrelated_str}\nUse --allow-dirty to override.")
+
+    if allowlisted_modifications:
+        print(f"  ℹ️  Note: Existing modifications to {', '.join(set(allowlisted_modifications))} will be staged.")
 
 
 def stage_signoff_files(repo_root: Path):
@@ -427,23 +432,6 @@ def resolve_branch_name(repo_root: Path, desired_branch: str) -> str:
         return desired_branch
     timestamp = int(time.time())
     return f"{desired_branch}-{timestamp}"
-
-
-def profile_block_digest(data: bytes) -> str:
-    """Mirrors the canonical SED range pipeline: sed -n '/BEGIN/,/END/p' | sha256sum | cut -c1-12."""
-    lines = data.splitlines(keepends=True)
-    block_lines: list[bytes] = []
-    recording = False
-    for line in lines:
-        if b"INTERVIEW-PROFILE:BEGIN" in line:
-            recording = True
-        if recording:
-            block_lines.append(line)
-        if b"INTERVIEW-PROFILE:END" in line:
-            break
-    if block_lines:
-        return hashlib.sha256(b"".join(block_lines)).hexdigest()[:12]
-    return hashlib.sha256(data).hexdigest()[:12]
 
 
 def setup_ruleset(
@@ -589,7 +577,13 @@ def run_init(
     if ctx.is_unborn:
         subprocess.run(["git", "checkout", "-b", target_branch], cwd=root, check=True, capture_output=True)
     else:
-        subprocess.run(["git", "checkout", "-b", target_branch], cwd=root, check=True, capture_output=True)
+        # Branch from the default branch to prevent dragging unmerged commits
+        subprocess.run(
+            ["git", "checkout", "-b", target_branch, ctx.default_branch],
+            cwd=root,
+            check=True,
+            capture_output=True,
+        )
 
     stage_signoff_files(root)
     subprocess.run(["git", "commit", "-m", "chore: scaffold git signoff attestation"], cwd=root, check=True, capture_output=True)

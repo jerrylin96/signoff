@@ -99,20 +99,25 @@ def validate(trailers):
     statuses = trailers.get("Signoff-Status", [])
     digests = trailers.get("Signoff-Transcript-Digest", [])
     if "VERIFIED_BY_HUMAN" in statuses:
-        for d in digests:
-            if d == "unavailable":
-                problems.append("status 'VERIFIED_BY_HUMAN' requires sha256 transcript digest, got 'unavailable'")
-            elif not DIGEST_RE.match(d):
-                problems.append(f"malformed Signoff-Transcript-Digest {d!r}")
+        if not digests:
+            problems.append("status 'VERIFIED_BY_HUMAN' requires a Signoff-Transcript-Digest")
+        else:
+            for d in digests:
+                if d == "unavailable":
+                    problems.append("status 'VERIFIED_BY_HUMAN' requires sha256 transcript digest, got 'unavailable'")
+                elif not DIGEST_RE.match(d):
+                    problems.append(f"malformed Signoff-Transcript-Digest {d!r}")
     if "VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST" in statuses:
-        for d in digests:
-            if d != "unavailable":
-                problems.append(
-                    f"status 'VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST' requires 'unavailable' digest, got {d!r}"
-                )
+        if not digests:
+            problems.append("status 'VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST' requires 'unavailable' digest")
+        else:
+            for d in digests:
+                if d != "unavailable":
+                    problems.append(
+                        f"status 'VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST' requires 'unavailable' digest, got {d!r}"
+                    )
 
     return problems
-
 
 
 def describe(trailers):
