@@ -181,47 +181,44 @@ def detect_git_context(start_dir: Optional[Path] = None) -> GitContext:
     target_dir = Path(start_dir or Path.cwd()).resolve()
     
     # 1. Resolve Git Root
-    try:
-        root_str = subprocess.check_output(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=target_dir,
-            text=True,
-            stderr=subprocess.DEVNULL,
-        ).strip()
-        root = Path(root_str).resolve()
-    except subprocess.CalledProcessError:
+    proc = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=target_dir,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
         raise RuntimeError(f"Not a git repository: {target_dir}")
+    root = Path(proc.stdout.strip()).resolve()
 
     # 2. Check Unborn HEAD
     is_unborn = False
-    try:
-        subprocess.check_output(["git", "rev-parse", "--verify", "HEAD"], cwd=root, stderr=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
+    proc = subprocess.run(["git", "rev-parse", "--verify", "HEAD"], cwd=root, capture_output=True, text=True)
+    if proc.returncode != 0:
         is_unborn = True
 
     # 3. Current Branch
     current_branch = None
-    try:
-        b = subprocess.check_output(["git", "branch", "--show-current"], cwd=root, text=True, stderr=subprocess.DEVNULL).strip()
-        if b:
-            current_branch = b
-    except subprocess.CalledProcessError:
-        pass
+    b_proc = subprocess.run(["git", "branch", "--show-current"], cwd=root, capture_output=True, text=True)
+    if b_proc.returncode == 0 and b_proc.stdout.strip():
+        current_branch = b_proc.stdout.strip()
 
-    # 4. Default Branch
-    default_branch = "main"
-    try:
-        ref = subprocess.check_output(
-            ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
-            cwd=root,
-            text=True,
-            stderr=subprocess.DEVNULL,
-        ).strip()
-        if "/" in ref:
-            default_branch = ref.split("/", 1)[1]
-    except subprocess.CalledProcessError:
-        # Fallback detection
-        for candidate in ("main", "master", "trunk", "dev"):
+    # 4. Default Branch Detection
+    default_branch = current_branch or "main"
+    origin_head_proc = subprocess.run(
+        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if origin_head_proc.returncode == 0 and "/" in origin_head_proc.stdout.strip():
+        default_branch = origin_head_proc.stdout.strip().split("/", 1)[1]
+    else:
+        candidates = (
+            "main", "master", "trunk", "dev", "develop", "development",
+            "staging", "release", "production",
+        )
+        for candidate in candidates:
             check = subprocess.run(["git", "show-ref", "--verify", f"refs/heads/{candidate}"], cwd=root, capture_output=True)
             if check.returncode == 0:
                 default_branch = candidate
@@ -229,16 +226,9 @@ def detect_git_context(start_dir: Optional[Path] = None) -> GitContext:
 
     # 5. Remote Slug
     slug = None
-    try:
-        remote_url = subprocess.check_output(
-            ["git", "remote", "get-url", "origin"],
-            cwd=root,
-            text=True,
-            stderr=subprocess.DEVNULL,
-        ).strip()
-        slug = parse_github_slug(remote_url)
-    except subprocess.CalledProcessError:
-        pass
+    remote_proc = subprocess.run(["git", "remote", "get-url", "origin"], cwd=root, capture_output=True, text=True)
+    if remote_proc.returncode == 0:
+        slug = parse_github_slug(remote_proc.stdout.strip())
 
     return GitContext(
         root=root,
@@ -378,7 +368,9 @@ def inject_readme_badge(repo_root: Path, slug: str) -> Path:
 def ensure_clean_working_tree(repo_root: Path, allow_dirty: bool = False):
     if allow_dirty:
         return
-    proc = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root, capture_output=True, text=True, check=True)
+    proc = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"git status failed: {proc.stderr.strip()}")
     status = proc.stdout
     if not status.strip():
         return
@@ -422,7 +414,9 @@ def stage_signoff_files(repo_root: Path):
     for f in files:
         target = repo_root / f
         if target.is_file():
-            subprocess.run(["git", "add", f], cwd=repo_root, check=True)
+            proc = subprocess.run(["git", "add", f], cwd=repo_root, capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise RuntimeError(f"git add {f} failed: {proc.stderr.strip()}")
 
 
 def resolve_branch_name(repo_root: Path, desired_branch: str) -> str:
@@ -542,7 +536,26 @@ def run_init(
     # Step 1: Clean tree guard
     ensure_clean_working_tree(root, allow_dirty=allow_dirty)
 
-    # Step 2: Profile selection
+    # Step 2: Checkout target branch FIRST before scaffolding any files
+    target_branch = resolve_branch_name(root, branch)
+    if ctx.is_unborn:
+        proc = subprocess.run(["git", "checkout", "-b", target_branch], cwd=root, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(f"Failed to create branch '{target_branch}': {proc.stderr.strip()}")
+    else:
+        # Check if default_branch resolves to a commit
+        base_ref = ctx.default_branch
+        verify_base = subprocess.run(["git", "rev-parse", "--verify", f"{base_ref}^{{commit}}"], cwd=root, capture_output=True, text=True)
+        if verify_base.returncode == 0:
+            proc = subprocess.run(["git", "checkout", "-b", target_branch, base_ref], cwd=root, capture_output=True, text=True)
+        else:
+            print(f"  ℹ️  Notice: Base branch '{base_ref}' not found; branching '{target_branch}' from HEAD.")
+            proc = subprocess.run(["git", "checkout", "-b", target_branch], cwd=root, capture_output=True, text=True)
+            
+        if proc.returncode != 0:
+            raise RuntimeError(f"Failed to create branch '{target_branch}': {proc.stderr.strip()}")
+
+    # Step 3: Profile selection
     rec_profile = detect_recommended_profile(root)
     effective_profile = profile_id or rec_profile
     print("\n[2/5] 📦 Selecting interview profile...")
@@ -557,14 +570,14 @@ def run_init(
             effective_profile = "software-general"
     print(f"  Active profile: {effective_profile}")
 
-    # Step 3: Scaffold files
+    # Step 4: Scaffold files
     scaffold_workflow(root, default_branch=ctx.default_branch)
     scaffold_profile(root, profile_id=effective_profile)
     merge_claude_settings(root)
     if effective_slug and not skip_badge:
         inject_readme_badge(root, slug=effective_slug)
 
-    # Step 4: Ruleset setup
+    # Step 5: Ruleset setup
     ruleset_res = setup_ruleset(
         root,
         slug=effective_slug,
@@ -572,21 +585,16 @@ def run_init(
         skip_ruleset=skip_ruleset,
     )
 
-    # Step 5: Checkout target branch & Commit scaffold files
-    target_branch = resolve_branch_name(root, branch)
-    if ctx.is_unborn:
-        subprocess.run(["git", "checkout", "-b", target_branch], cwd=root, check=True, capture_output=True)
-    else:
-        # Branch from the default branch to prevent dragging unmerged commits
-        subprocess.run(
-            ["git", "checkout", "-b", target_branch, ctx.default_branch],
-            cwd=root,
-            check=True,
-            capture_output=True,
-        )
-
+    # Step 6: Stage and commit
     stage_signoff_files(root)
-    subprocess.run(["git", "commit", "-m", "chore: scaffold git signoff attestation"], cwd=root, check=True, capture_output=True)
+    commit_proc = subprocess.run(
+        ["git", "commit", "-m", "chore: scaffold git signoff attestation"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if commit_proc.returncode != 0:
+        raise RuntimeError(f"Git commit failed: {commit_proc.stderr.strip()}")
 
     pr_url = f"https://github.com/{effective_slug}/compare/{ctx.default_branch}...{target_branch}?expand=1" if effective_slug else None
 

@@ -409,6 +409,69 @@ def test_base_branch_safety(temp_git_repo):
     assert "WIP commit" not in log
 
 
+def test_base_branch_develop_only(tmp_path):
+    repo = tmp_path / "dev_repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "develop"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Dev User"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "dev@example.com"], cwd=repo, check=True)
+    (repo / "README.md").write_text("# Dev Repo\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo, check=True)
+
+    result = init.run_init(
+        repo_root=repo,
+        profile_id="software-general",
+        branch="signoff/init",
+        skip_ruleset=True,
+        non_interactive=True,
+    )
+    assert result.success is True
+    assert result.branch == "signoff/init"
+    current_branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=repo, text=True).strip()
+    assert current_branch == "signoff/init"
+
+
+def test_base_branch_custom_unlisted_name(tmp_path):
+    repo = tmp_path / "custom_repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "my-custom-base-branch"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Custom User"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "custom@example.com"], cwd=repo, check=True)
+    (repo / "README.md").write_text("# Custom Base\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo, check=True)
+
+    result = init.run_init(
+        repo_root=repo,
+        profile_id="software-general",
+        branch="signoff/init",
+        skip_ruleset=True,
+        non_interactive=True,
+    )
+    assert result.success is True
+    assert result.branch == "signoff/init"
+
+
+def test_checkout_failure_leaves_tree_clean(temp_git_repo):
+    # Pass an invalid branch name that git checkout rejects
+    with pytest.raises(RuntimeError, match="Failed to create branch"):
+        init.run_init(
+            repo_root=temp_git_repo,
+            branch="bad..branch/name..",
+            skip_ruleset=True,
+            non_interactive=True,
+        )
+
+    # Verify no scaffold files were created / left stranded
+    assert not (temp_git_repo / ".claude").exists()
+    assert not (temp_git_repo / ".github").exists()
+    assert not (temp_git_repo / ".signoff").exists()
+    status = subprocess.check_output(["git", "status", "--porcelain"], cwd=temp_git_repo, text=True)
+    assert status.strip() == ""
+
+
+
 def test_profile_text_byte_parity():
     from signoff_mcp.profile import profile_block_digest
 

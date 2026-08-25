@@ -52,7 +52,7 @@ you'd notice drift outside them. That is exactly the part a human must own.
 Inside your repository root, run the zero-touch initializer (Python 3.10+ stdlib only — zero dependencies):
 
 ```bash
-python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/main/init.py)"
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/main/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
 ```
 
 The script automatically:
@@ -91,7 +91,7 @@ AI: ✅ Attestation commit [SIGNOFF a1b2c3d] created! Your badge is green.
 
 | Where you work | One-time action |
 |---|---|
-| **Any repository (Zero-touch)** | `python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/main/init.py)"` |
+| **Any repository (Zero-touch)** | `curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/main/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py` |
 | **Claude Code CLI / desktop** | `/plugin marketplace add jerrylin96/signoff` then `/plugin install signoff@signoff` (or claude.ai → Customize → Plugins → Add → **Add marketplace** → "Add from a repository" → `jerrylin96/signoff`). Auto-updates from this repo. |
 | **claude.ai web / cloud sessions** | Download [`signoff.zip` from the latest release](https://github.com/jerrylin96/signoff/releases/latest/download/signoff.zip) (CI-built from the tagged tree), then claude.ai → Customize → Skills → Add. Snapshot install — re-download on new releases. |
 | **A team repo you control (cloud + local)** | Declare the plugin under [`enabledPlugins`](https://code.claude.com/docs/en/settings#enabledplugins) in that repo's `.claude/settings.json` — loads at session start from this marketplace and auto-updates. |
