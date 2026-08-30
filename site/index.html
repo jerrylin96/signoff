@@ -377,34 +377,28 @@ and risk attestation</span>
   <div class="wrap sec">
     <div class="label">
       <span class="num">03</span>
-      <h2>Install: pick the one row for your surface</h2>
+      <h2>Install: one folder, committed to your repo</h2>
     </div>
     <div class="body">
-      <p>No channel requires another. Then, from the branch you want to merge,
+      <p>The skill lives <em>in the repository under review</em> — no plugins,
+      no downloads, nothing account-scoped. Then, from the branch you want to merge,
       type <code class="inline">/signoff</code> (adaptive default auto-selects intensity;
       <code class="inline">--deep</code> for skeptical rigor, <code class="inline">--quick</code> for
       low-risk diffs).</p>
       <div class="rows">
         <div class="row">
-          <h3>Claude Code — CLI or desktop</h3>
-          <p class="note">Auto-updates from the marketplace repo.</p>
-          <pre class="cmd"><code>/plugin marketplace add jerrylin96/signoff
-/plugin install signoff@signoff</code></pre>
+          <h3>Any repository — zero-touch</h3>
+          <p class="note">The initializer vendors the skill into
+          <code class="inline">.claude/skills/signoff/</code>, scaffolds the CI
+          gate and interview profile, and opens a ready-to-merge branch.</p>
+          <pre class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v1/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py</code></pre>
         </div>
         <div class="row">
-          <h3>claude.ai — web &amp; cloud sessions</h3>
-          <p class="note">Download the CI-built
-          <a href="https://github.com/jerrylin96/signoff/releases/latest/download/signoff.zip">latest
-          <code class="inline">signoff.zip</code></a>, then
-          claude.ai → Customize → Skills → Add. Snapshot install — re-download on
-          new releases.</p>
-        </div>
-        <div class="row">
-          <h3>A team repo you control — cloud + local</h3>
-          <p class="note">Declare the plugin in the repo’s
-          <code class="inline">.claude/settings.json</code>; it loads at session
-          start for every collaborator and auto-updates.</p>
-          <pre class="cmd"><code>{ "enabledPlugins": { "signoff@signoff": true } }</code></pre>
+          <h3>Any repository — manual</h3>
+          <p class="note">Copy <code class="inline">skills/signoff/</code> to
+          <code class="inline">&lt;your-repo&gt;/.claude/skills/signoff/</code>
+          and commit. That is the whole install for Claude Code — CLI, desktop,
+          and claude.ai web/cloud sessions, for every collaborator.</p>
         </div>
         <div class="row">
           <h3>Other harnesses — Antigravity, Codex, Goose, …</h3>
@@ -435,7 +429,7 @@ and risk attestation</span>
         <li>
           <h3>Create <code class="inline">.signoff/profile.md</code> in your repo</h3>
           <p>The repository being reviewed carries its own question emphasis —
-          for every collaborator, on every install channel, surviving skill
+          for every collaborator, on every harness, surviving skill
           updates.</p>
         </li>
         <li>

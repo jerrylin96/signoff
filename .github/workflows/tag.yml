@@ -7,7 +7,7 @@ name: tag
 # commit — how verify-v1 self-creates when the branch adding this file
 # merges), and (b) manual dispatch with an explicit tag name and target for
 # future pins. Existing tags are never moved. Release tags (v*) are
-# refused — the Release workflow cuts those and enforces the plugin.json
+# refused — the Release workflow cuts those and enforces the pyproject.toml
 # version match.
 
 on:
