@@ -17,28 +17,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build skill zip
-        run: cd skills && zip -r ../signoff.zip signoff
-
-      - name: Resolve release tag from plugin version
+      - name: Resolve release tag from project version
         id: ver
         run: |
-          PLUGIN_VERSION=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
+          PROJECT_VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             TAG_VERSION="${GITHUB_REF_NAME#v}"
-            if [ "$TAG_VERSION" != "$PLUGIN_VERSION" ]; then
-              echo "Tag $GITHUB_REF_NAME does not match plugin.json version $PLUGIN_VERSION" >&2
+            if [ "$TAG_VERSION" != "$PROJECT_VERSION" ]; then
+              echo "Tag $GITHUB_REF_NAME does not match pyproject.toml version $PROJECT_VERSION" >&2
               exit 1
             fi
             echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=v$PLUGIN_VERSION" >> "$GITHUB_OUTPUT"
+            echo "tag=v$PROJECT_VERSION" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create release (creates the tag on dispatch)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.ver.outputs.tag }}" signoff.zip \
+          gh release create "${{ steps.ver.outputs.tag }}" \
             --title "${{ steps.ver.outputs.tag }}" --generate-notes \
             --target "$GITHUB_SHA"

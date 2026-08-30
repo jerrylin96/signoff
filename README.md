@@ -52,15 +52,16 @@ you'd notice drift outside them. That is exactly the part a human must own.
 Inside your repository root, run the zero-touch initializer (Python 3.10+ stdlib only — zero dependencies):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v1/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v2/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
 ```
 
 The script automatically:
 1. Detects your repo, branch, and stack (suggests science or general software profile).
-2. Scaffolds `.github/workflows/signoff.yml`, `.signoff/profile.md`, and `.claude/settings.json`.
-3. Injects the **attested by humans** badge into your `README.md`.
-4. Automates GitHub Ruleset protection (via `gh` CLI or a 1-click settings link).
-5. Creates feature branch `signoff/init` with your scaffolded setup ready for you to run `/signoff` and merge.
+2. Vendors the `/signoff` skill into `.claude/skills/signoff/` — committed with your repo, it loads for every collaborator, in local and cloud Claude Code sessions alike, with nothing account-scoped to install.
+3. Scaffolds `.github/workflows/signoff.yml` and `.signoff/profile.md`.
+4. Injects the **attested by humans** badge into your `README.md`.
+5. Automates GitHub Ruleset protection (via `gh` CLI or a 1-click settings link).
+6. Creates feature branch `signoff/init` with your scaffolded setup ready for you to run `/signoff` and merge.
 
 ---
 
@@ -87,15 +88,18 @@ AI: ✅ Attestation commit [SIGNOFF a1b2c3d] created! Your badge is green.
 
 ---
 
-## Installation & Harness Channels
+## Installation
+
+One channel, everywhere: the skill is a self-contained folder of Markdown
+that lives *in the repository under review*. Committed once, `/signoff`
+works for every collaborator — no plugins, no marketplaces, no downloads,
+nothing account-scoped.
 
 | Where you work | One-time action |
 |---|---|
-| **Any repository (Zero-touch)** | `curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v1/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py` |
-| **Claude Code CLI / desktop** | `/plugin marketplace add jerrylin96/signoff` then `/plugin install signoff@signoff` (or claude.ai → Customize → Plugins → Add → **Add marketplace** → "Add from a repository" → `jerrylin96/signoff`). Auto-updates from this repo. |
-| **claude.ai web / cloud sessions** | Download [`signoff.zip` from the latest release](https://github.com/jerrylin96/signoff/releases/latest/download/signoff.zip) (CI-built from the tagged tree), then claude.ai → Customize → Skills → Add. Snapshot install — re-download on new releases. |
-| **A team repo you control (cloud + local)** | Declare the plugin under [`enabledPlugins`](https://code.claude.com/docs/en/settings#enabledplugins) in that repo's `.claude/settings.json` — loads at session start from this marketplace and auto-updates. |
-| **Other harnesses (Antigravity, Codex, Goose, …)** | Copy the self-contained `skills/signoff/` folder into your harness's skill location and set the transcript adapter env vars — full matrix in [HARNESSES.md](skills/signoff/HARNESSES.md). |
+| **Any repository (Zero-touch)** | `curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v2/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py` |
+| **Any repository (manual)** | Copy this repo's `skills/signoff/` folder to `<your-repo>/.claude/skills/signoff/` and commit. That's the whole install for Claude Code — CLI, desktop, and claude.ai web/cloud sessions. Update by re-copying (or re-running the initializer) on new releases. |
+| **Other harnesses (Antigravity, Codex, Goose, …)** | Same folder, different location: copy `skills/signoff/` into your harness's skill directory and set the transcript adapter env vars — full matrix in [HARNESSES.md](skills/signoff/HARNESSES.md). |
 
 ## Make it yours: changing what gets asked
 
@@ -136,9 +140,9 @@ so downstream readers can always see which questions the human was held to —
 and a diluted profile is distinguishable from a shipped one.
 
 Other knobs: `SIGNOFF_PROFILE_FILE=<path>` overrides everything for one
-machine; editing the block inside an installed `SKILL.md` still works for
-self-managed copies (auto-updating plugin installs overwrite such edits —
-prefer the repo-local file). Full details:
+machine; editing the block inside the vendored `SKILL.md` also works, but
+re-vendoring on update overwrites such edits — prefer the repo-local
+`.signoff/profile.md`. Full details:
 [HARNESSES.md](skills/signoff/HARNESSES.md).
 
 ## What an attestation looks like
@@ -192,12 +196,11 @@ breakers, notes concurrency handling).
 - **Per-harness install & portability guide:** [`skills/signoff/HARNESSES.md`](skills/signoff/HARNESSES.md)
 - **Skill entry point:** [`skills/signoff/SKILL.md`](skills/signoff/SKILL.md)
 
-Why the install split: this repo is a Claude Code **plugin marketplace**
-(`.claude-plugin/marketplace.json` at root; the repo root is the plugin), and
-the plugin is the auto-updating channel everywhere it reaches. As of
-2026-08-05, account-scoped plugin installs register in claude.ai cloud
-sessions but do not yet load the bundled skill there — hence the release-zip
-row for web/cloud, which retires once the platform closes that gap.
+Distribution is deliberately boring: a folder of Markdown committed to the
+repository under review, loaded by the harness from disk. Earlier
+account-scoped channels (a Claude Code plugin marketplace and a release-zip
+skill upload) were retired in v0.4.0 — the vendored folder replaced them on
+every surface; the spec's phase log records the history.
 
 ### MCP server (optional enforcement)
 
@@ -238,8 +241,8 @@ pip install -e . pytest
 pytest
 ```
 
-Contract tests live in `scripts/tests/` (skill contracts), `tests/` (plugin
-manifests), and `signoff_mcp/tests/` (server mechanics).
+Contract tests live in `scripts/tests/` (skill contracts), `tests/` (repo
+initializer), and `signoff_mcp/tests/` (server mechanics).
 
 ## Provenance
 

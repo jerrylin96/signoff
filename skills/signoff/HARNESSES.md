@@ -29,22 +29,42 @@ on other Antigravity setups, copy the folder per the Portability Rules.
 - Transcript env: `ANTIGRAVITY_CONVERSATION_ID`
 - Transcript path: `~/.gemini/antigravity-cli/brain/<cid>/.system_generated/logs/transcript.jsonl`
 
-## Claude Code — web (claude.ai/code)
+## Claude Code — CLI, desktop, and web (claude.ai/code)
 
-The operative web channel is a **user-level skill** installed by zip upload
-(the plugin channel registers in cloud sessions but does not load its skill
-there yet — see "Distribution to end users" below):
+One mechanism covers every Claude Code surface: a **project skill** — the
+self-contained folder committed to the repository under review at
+`<repo>/.claude/skills/signoff/`. Local sessions load it from the working
+tree; cloud sessions load it from the clone at session start. Vendor it with
+the zero-touch initializer (README Quickstart) or copy the folder per the
+Portability Rules. `git pull` is the whole update mechanism for
+collaborators; re-running the initializer (or re-copying) bumps the vendored
+copy to a new release. Vendored copies never self-update or announce new
+releases, and the initializer vendors the default branch's current skill
+content (no version marker yet — caveat log in `docs/productionization.md`);
+offline installs pass `--skill-source <path-to-skills/signoff>`. Commit a
+real copy, not a symlink — re-running the initializer over a symlinked
+destination aborts, since `rmtree` refuses symlinks. This repository
+dogfoods the same path via a `.claude/skills/signoff` symlink to its own
+`skills/signoff/`; that symlink pattern is for this repo only.
 
-1. Get `signoff.zip` — download the CI-built asset from the
-   [latest release](https://github.com/jerrylin96/signoff/releases/latest/download/signoff.zip),
-   or build it from a current checkout: `cd skills && zip -r signoff.zip signoff`
-2. In the left panel: **Customize → Skills → Add**, upload the zip.
-3. Invoke with `/signoff` in any session.
+A machine-local install also works for local CLI/desktop sessions: copy the
+folder to `~/.claude/skills/signoff` (user-level, all projects). Linked git
+worktrees are handled by the `--git-common-dir` fallback: the transcript is
+keyed to the primary repository root, and the adapter resolves it
+automatically.
 
 - Transcript env: `CLAUDE_CODE_SESSION_ID` (exported to Bash subprocesses;
   verified live in a web session on 2026-08-05, including full adapter
   resolution of the running session's transcript).
 - Transcript path: `~/.claude/projects/<cwd-slug>/<session-id>.jsonl`
+
+Optional MCP enforcement (server-derived status, `ack_no_transcript` circuit
+breaker, stale-state checks — GSA §4):
+
+```bash
+pip install "signoff-mcp @ git+https://github.com/jerrylin96/signoff"
+claude mcp add signoff -- signoff-mcp   # server must run with cwd = target repo
+```
 
 Web-specific caveats:
 - **Ephemeral containers**: the transcript file is destroyed when the session
@@ -88,61 +108,16 @@ accountability step. Resolution order:
 Unifying multiple recorded emails to one human is the read side's job via
 standard `.mailmap`, not the capture side's.
 
-### Updating the skill
+### Distribution to end users
 
-Re-uploading a zip with the same skill name **replaces** the installed copy —
-no delete needed. During active development, skip the upload loop entirely:
-cloud sessions also load project skills committed to the cloned repo's
-`.claude/skills/` (synced from git at session start), so this repo carries a
-`.claude/skills/signoff` symlink and `git push` is the whole update mechanism
-for sessions on this repo. Refresh the user-level (Customize) copy at stable
-milestones only.
-
-### Distribution to end users (no repo linking)
-
-Users on unrelated projects never clone or link this repo. **Pick exactly
-one channel for your surface** — none requires another:
-
-- **Plugin marketplace (primary on CLI/desktop)**: claude.ai Customize →
-  Plugins → Add → "Add marketplace" → "Add from a repository" →
-  `jerrylin96/signoff`, then install the `signoff` plugin (path verified
-  2026-08-05 — note it lives under Customize, not the Directory). CLI
-  equivalent: `/plugin marketplace add jerrylin96/signoff` then
-  `/plugin install signoff@signoff`. The repo root ships
-  `.claude-plugin/marketplace.json` + `plugin.json`, so the repo itself is
-  the marketplace. **Cloud-session caveat (verified 2026-08-05)**: the
-  account-scoped install does sync — cloud sessions list the plugin as
-  enabled — but its bundled skill does not currently load there, so
-  `/signoff` stays unavailable in cloud sessions from this channel alone.
-  Machine-local plugin installs (`~/.claude/settings.json`) do not transfer
-  to cloud sessions either.
-- **Web sessions (operative channel)**: claude.ai skill zip upload (this
-  section) using the CI-built `signoff.zip` from the
-  [latest release](https://github.com/jerrylin96/signoff/releases/latest/download/signoff.zip)
-  — the proven user-scoped channel that reaches cloud sessions today. A zip
-  is a snapshot: it updates only when re-uploaded, so re-download on new
-  releases. This channel retires once cloud sessions load plugin skills.
-- **Team repos (web + local)**: declare the plugin under
-  [`enabledPlugins`](https://code.claude.com/docs/en/settings#enabledplugins)
-  in *their* `.claude/settings.json` — installed at session start from the
-  marketplace and auto-updating, per-repo rather than account-scoped.
-- **Other harnesses**: self-contained folder copy (sections below).
-
-## Claude Code — CLI
-
-Copy the folder to `~/.claude/skills/signoff` (user-level, all projects) or
-`<repo>/.claude/skills/signoff` (project-level). Same env and transcript path
-as web. Linked git worktrees are handled by the `--git-common-dir` fallback:
-the transcript is keyed to the primary repository root, and the adapter
-resolves it automatically.
-
-Optional MCP enforcement (server-derived status, `ack_no_transcript` circuit
-breaker, stale-state checks — GSA §4):
-
-```bash
-pip install "signoff-mcp @ git+https://github.com/jerrylin96/signoff"
-claude mcp add signoff -- signoff-mcp   # server must run with cwd = target repo
-```
+One channel: the vendored project skill above, committed to each repository
+that wants `/signoff`. Users never clone or link this repo, and there is
+nothing account-scoped to install or keep updated. The earlier account-scoped
+channels — a Claude Code plugin marketplace and a CI-built release-zip skill
+upload — were retired in v0.4.0: both demanded per-account setup, and the
+plugin's bundled skill never loaded in cloud sessions (platform gap, verified
+2026-08-05); the per-repo folder covers every surface without either. Other
+harnesses use the same folder in their own skill location (sections below).
 
 ## ChatGPT Codex CLI
 
@@ -224,12 +199,12 @@ The active profile is resolved per run, in fixed order:
    falling back.
 2. **`<repo>/.signoff/profile.md`** — repo-local profile. Commit one file to
    the repository under review and every `/signoff` run there uses it — for
-   every collaborator, on every install channel, surviving plugin
-   auto-updates. This is the recommended path for labs and teams.
+   every collaborator, on every harness, surviving skill updates. This is
+   the recommended path for labs and teams.
 3. **Embedded block in `SKILL.md`** — the shipped default
-   (`software-general`). Editing it in a self-managed copy still works, but
-   managed plugin installs overwrite such edits on update — prefer the
-   repo-local file.
+   (`software-general`). Editing it in the vendored copy still works, but
+   re-vendoring on update overwrites such edits — prefer the repo-local
+   file.
 
 A profile file must contain exactly one block of the form:
 

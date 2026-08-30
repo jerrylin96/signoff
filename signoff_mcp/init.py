@@ -1,7 +1,7 @@
 """Zero-touch repository initializer for /signoff (Git Signoff Attestation).
 
-Scaffolds CI workflows, domain interview profiles, agent plugins, README badges,
-and GitHub ruleset enforcement.
+Scaffolds CI workflows, domain interview profiles, the vendored /signoff
+skill, README badges, and GitHub ruleset enforcement.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import webbrowser
 from dataclasses import dataclass
@@ -286,42 +287,44 @@ def scaffold_profile(repo_root: Path, profile_id: str = "domain-science") -> Pat
     return profile_file
 
 
-def merge_claude_settings(repo_root: Path) -> Path:
-    claude_dir = repo_root / ".claude"
-    claude_dir.mkdir(parents=True, exist_ok=True)
-    settings_file = claude_dir / "settings.json"
-    
-    data: dict = {}
-    if settings_file.is_file():
-        content = settings_file.read_text(encoding="utf-8").strip()
-        if content:
-            try:
-                parsed = json.loads(content)
-                if not isinstance(parsed, dict):
-                    raise RuntimeError(f"Existing {settings_file} is not a valid JSON object")
-                data = parsed
-            except json.JSONDecodeError as e:
-                raise RuntimeError(f"Failed to parse existing {settings_file}: {e}")
-            
-    # Schema: extraKnownMarketplaces nested object and enabledPlugins object map
-    marketplaces = data.get("extraKnownMarketplaces", {})
-    if not isinstance(marketplaces, dict):
-        marketplaces = {}
-    marketplaces.setdefault("signoff", {"source": {"source": "github", "repo": "jerrylin96/signoff"}})
-    data["extraKnownMarketplaces"] = marketplaces
+SKILL_SOURCE_REPO = "https://github.com/jerrylin96/signoff"
 
-    plugins = data.get("enabledPlugins", {})
-    if isinstance(plugins, list):
-        # Migrate legacy array to object map
-        plugins = {p: True for p in plugins if isinstance(p, str)}
-    elif not isinstance(plugins, dict):
-        plugins = {}
 
-    plugins.setdefault("signoff@signoff", True)
-    data["enabledPlugins"] = plugins
-    
-    settings_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    return settings_file
+def vendor_skill(repo_root: Path, source: Optional[Path] = None) -> Path:
+    """Copy the self-contained skills/signoff folder into <repo>/.claude/skills/signoff.
+
+    The vendored folder is the sole distribution channel: committed to the
+    repository, it loads for every collaborator in local and cloud Claude Code
+    sessions, with nothing account-scoped to install. Re-running replaces the
+    copy, which is how the skill is updated.
+
+    source: local directory holding the skill folder (offline installs, tests);
+    default is a fresh shallow clone of the signoff repository.
+    """
+    dest = repo_root / ".claude" / "skills" / "signoff"
+
+    def _copy(src: Path) -> Path:
+        if not (src / "SKILL.md").is_file():
+            raise RuntimeError(f"Skill source {src} does not contain SKILL.md")
+        if dest.exists():
+            shutil.rmtree(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(src, dest)
+        return dest
+
+    if source is not None:
+        return _copy(Path(source))
+
+    with tempfile.TemporaryDirectory(prefix="signoff-skill-") as tmp:
+        clone_dir = Path(tmp) / "signoff"
+        proc = subprocess.run(
+            ["git", "clone", "--depth", "1", SKILL_SOURCE_REPO, str(clone_dir)],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"Failed to fetch the signoff skill: {proc.stderr.strip()}")
+        return _copy(clone_dir / "skills" / "signoff")
 
 
 def inject_readme_badge(repo_root: Path, slug: str) -> Path:
@@ -384,7 +387,7 @@ def ensure_clean_working_tree(repo_root: Path, allow_dirty: bool = False):
         ".github/workflows/signoff.yml",
         ".signoff/",
         ".signoff",
-        ".claude/settings.json",
+        ".claude/skills/signoff",
         "README.md",
     )
     unrelated_changes = []
@@ -413,12 +416,12 @@ def stage_signoff_files(repo_root: Path):
         ".github/workflows/signoff.yml",
         ".signoff/profile.md",
         ".signoff/ruleset.json",
-        ".claude/settings.json",
+        ".claude/skills/signoff",
         "README.md",
     ]
     for f in files:
         target = repo_root / f
-        if target.is_file():
+        if target.exists():
             proc = subprocess.run(["git", "add", f], cwd=repo_root, capture_output=True, text=True)
             if proc.returncode != 0:
                 raise RuntimeError(f"git add {f} failed: {proc.stderr.strip()}")
@@ -533,6 +536,7 @@ def run_init(
     allow_dirty: bool = False,
     non_interactive: bool = False,
     open_browser: bool = False,
+    skill_source: Optional[Path] = None,
 ) -> InitResult:
     ctx = detect_git_context(repo_root)
     root = ctx.root
@@ -580,7 +584,7 @@ def run_init(
     # Step 4: Scaffold files
     scaffold_workflow(root, default_branch=ctx.default_branch)
     scaffold_profile(root, profile_id=effective_profile)
-    merge_claude_settings(root)
+    vendor_skill(root, source=skill_source)
     if effective_slug and not skip_badge:
         inject_readme_badge(root, slug=effective_slug)
 
@@ -622,6 +626,7 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--allow-dirty", action="store_true", help="Allow running on dirty working tree")
     parser.add_argument("--non-interactive", action="store_true", help="Run without interactive prompts")
     parser.add_argument("--open-browser", action="store_true", help="Open GitHub settings in browser if manual fallback is needed")
+    parser.add_argument("--skill-source", type=Path, help="Local skills/signoff folder to vendor (offline installs; default: shallow clone)")
     return parser.parse_args(args)
 
 
@@ -641,9 +646,10 @@ def main() -> int:
             allow_dirty=args.allow_dirty,
             non_interactive=args.non_interactive,
             open_browser=args.open_browser,
+            skill_source=args.skill_source,
         )
         print(f"\n[3/5] 🌿 Created feature branch '{res.branch}' with scaffold commit.")
-        print("[4/5] 📝 Scaffolded workflow, profile, and settings files.")
+        print("[4/5] 📝 Scaffolded workflow, profile, and vendored the /signoff skill into .claude/skills/signoff.")
         
         # Surfacing ruleset status
         if res.ruleset.status == "created":

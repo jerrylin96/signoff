@@ -11,6 +11,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import init
 
+SKILL_SRC = Path(__file__).parent.parent / "skills" / "signoff"
+
 
 @pytest.fixture
 def temp_git_repo(tmp_path):
@@ -157,37 +159,32 @@ def test_scaffold_profile_file(temp_git_repo):
     assert "<!-- INTERVIEW-PROFILE:END -->" in content
 
 
-def test_merge_claude_settings_new(temp_git_repo):
-    init.merge_claude_settings(temp_git_repo)
-    settings_file = temp_git_repo / ".claude" / "settings.json"
-    assert settings_file.is_file()
-    data = json.loads(settings_file.read_text(encoding="utf-8"))
-    assert data.get("enabledPlugins", {}).get("signoff@signoff") is True
-    assert data.get("extraKnownMarketplaces", {}).get("signoff") == {
-        "source": {"source": "github", "repo": "jerrylin96/signoff"}
-    }
+def test_vendor_skill_from_local_source(temp_git_repo):
+    init.vendor_skill(temp_git_repo, source=SKILL_SRC)
+    dest = temp_git_repo / ".claude" / "skills" / "signoff"
+    assert (dest / "SKILL.md").is_file()
+    head = (dest / "SKILL.md").read_text(encoding="utf-8")[:2048]
+    assert "name: signoff" in head
+    # Self-contained copy: relative links into specs/ and profiles/ must resolve
+    assert (dest / "specs" / "gsa-core.md").is_file()
+    assert (dest / "profiles" / "domain-science.md").is_file()
+    assert (dest / "HARNESSES.md").is_file()
 
 
-def test_merge_claude_settings_existing(temp_git_repo):
-    claude_dir = temp_git_repo / ".claude"
-    claude_dir.mkdir()
-    (claude_dir / "settings.json").write_text(
-        json.dumps({"theme": "dark", "enabledPlugins": {"other-plugin": True}}),
-        encoding="utf-8",
-    )
-    init.merge_claude_settings(temp_git_repo)
-    data = json.loads((claude_dir / "settings.json").read_text(encoding="utf-8"))
-    assert data["theme"] == "dark"
-    assert data["enabledPlugins"]["other-plugin"] is True
-    assert data["enabledPlugins"]["signoff@signoff"] is True
+def test_vendor_skill_replaces_existing(temp_git_repo):
+    dest = temp_git_repo / ".claude" / "skills" / "signoff"
+    dest.mkdir(parents=True)
+    (dest / "stale.md").write_text("old copy", encoding="utf-8")
+    init.vendor_skill(temp_git_repo, source=SKILL_SRC)
+    assert not (dest / "stale.md").exists()
+    assert (dest / "SKILL.md").is_file()
 
 
-def test_merge_claude_settings_invalid_json_fails_safely(temp_git_repo):
-    claude_dir = temp_git_repo / ".claude"
-    claude_dir.mkdir()
-    (claude_dir / "settings.json").write_text("{bad-json:", encoding="utf-8")
-    with pytest.raises(RuntimeError, match="Failed to parse existing"):
-        init.merge_claude_settings(temp_git_repo)
+def test_vendor_skill_invalid_source_fails(temp_git_repo, tmp_path):
+    empty_src = tmp_path / "not-a-skill"
+    empty_src.mkdir()
+    with pytest.raises(RuntimeError, match="does not contain SKILL.md"):
+        init.vendor_skill(temp_git_repo, source=empty_src)
 
 
 def test_inject_readme_badge_under_h1(temp_git_repo):
@@ -249,16 +246,16 @@ def test_selective_staging(temp_git_repo):
     
     init.scaffold_workflow(temp_git_repo, default_branch="main")
     init.scaffold_profile(temp_git_repo, profile_id="domain-science")
-    init.merge_claude_settings(temp_git_repo)
+    init.vendor_skill(temp_git_repo, source=SKILL_SRC)
     init.inject_readme_badge(temp_git_repo, slug="example-org/test-project")
-    
+
     init.stage_signoff_files(temp_git_repo)
-    
+
     status = subprocess.check_output(["git", "status", "--porcelain"], cwd=temp_git_repo, text=True)
     assert "?? unrelated.txt" in status
     assert "A  .github/workflows/signoff.yml" in status or "M  .github/workflows/signoff.yml" in status
     assert "A  .signoff/profile.md" in status
-    assert "A  .claude/settings.json" in status
+    assert "A  .claude/skills/signoff/SKILL.md" in status
     assert "M  README.md" in status
 
 
@@ -370,6 +367,7 @@ def test_end_to_end_init(temp_git_repo):
         slug="example-org/test-project",
         skip_ruleset=True,
         non_interactive=True,
+        skill_source=SKILL_SRC,
     )
     assert result.success is True
     assert result.branch == "signoff/init"
@@ -405,6 +403,7 @@ def test_base_branch_safety(temp_git_repo):
         slug="example-org/test-project",
         skip_ruleset=True,
         non_interactive=True,
+        skill_source=SKILL_SRC,
     )
     assert result.branch == "signoff/init"
     
@@ -430,6 +429,7 @@ def test_base_branch_develop_only(tmp_path):
         branch="signoff/init",
         skip_ruleset=True,
         non_interactive=True,
+        skill_source=SKILL_SRC,
     )
     assert result.success is True
     assert result.branch == "signoff/init"
@@ -453,6 +453,7 @@ def test_base_branch_custom_unlisted_name(tmp_path):
         branch="signoff/init",
         skip_ruleset=True,
         non_interactive=True,
+        skill_source=SKILL_SRC,
     )
     assert result.success is True
     assert result.branch == "signoff/init"
@@ -466,6 +467,7 @@ def test_checkout_failure_leaves_tree_clean(temp_git_repo):
             branch="bad..branch/name..",
             skip_ruleset=True,
             non_interactive=True,
+            skill_source=SKILL_SRC,
         )
 
     # Verify no scaffold files were created / left stranded
@@ -508,6 +510,7 @@ def test_base_branch_origin_fallback(tmp_path):
         branch="signoff/init",
         skip_ruleset=True,
         non_interactive=True,
+        skill_source=SKILL_SRC,
     )
     assert result.success is True
     assert result.branch == "signoff/init"
@@ -568,6 +571,19 @@ def test_pyproject_does_not_package_top_level_init():
     pyproject_content = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
     assert "py-modules" not in pyproject_content
     assert 'include = ["signoff_mcp*"]' in pyproject_content
+
+
+def test_versions_are_synchronized():
+    """pyproject.toml and signoff_mcp.__version__ agree (release.yml derives tags from pyproject)."""
+    import re
+
+    import signoff_mcp
+
+    repo_root = Path(__file__).parent.parent
+    pyproject_content = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
+    m = re.search(r'^version = "([^"]+)"$', pyproject_content, re.MULTILINE)
+    assert m, "pyproject.toml must declare a project version"
+    assert m.group(1) == signoff_mcp.__version__
 
 
 

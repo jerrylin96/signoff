@@ -1,8 +1,8 @@
 """Contract tests for the project website (Phase 5 Gate 1).
 
 The site is a self-contained static page: no external requests (fonts,
-scripts, styles), and its load-bearing content — install channels, release
-zip, spec, badge — must stay in sync with the README's claims.
+scripts, styles), and its load-bearing content — the per-repo install
+channel, spec, badge — must stay in sync with the README's claims.
 """
 
 import os
@@ -31,13 +31,16 @@ def test_site_is_self_contained():
         )
 
 
-def test_site_covers_install_channels_and_links():
+def test_site_covers_install_channel_and_links():
     html = _html()
-    assert "/plugin marketplace add jerrylin96/signoff" in html
-    assert "releases/latest/download/signoff.zip" in html
+    # One distribution channel: the skill folder vendored into the target repo.
+    assert ".claude/skills/signoff/" in html
+    assert "raw.githubusercontent.com/jerrylin96/signoff/init-v2/init.py" in html
     assert "skills/signoff/specs/gsa-core.md" in html
-    assert "enabledPlugins" in html
     assert "HARNESSES.md" in html
+    # Retired account-scoped channels must not resurface as install paths.
+    assert "signoff.zip" not in html
+    assert "/plugin install" not in html
 
 
 def test_site_advertises_badge_and_verifier():

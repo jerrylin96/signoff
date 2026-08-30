@@ -202,6 +202,99 @@ donation vehicle. Milestones, in order:
    (milestone 3), not before — donating an unused spec buys prestige for
    nobody. Name/trademark considerations belong to this milestone too.
 
+## Simplification backlog — ponytail audit (2026-08-30)
+
+Recorded so future sessions argue against this list instead of
+re-discovering it. Context: an outside-user review found the setup story
+convoluted, and distribution was consolidated to a single per-repo channel
+in v0.4.0 — the skill folder vendored into the target repo's
+`.claude/skills/signoff/`; the plugin-marketplace and release-zip channels
+were retired (decision log: gsa-core.md Phase 4 amendment 2026-08-30). The
+audit principle is dotgemini's ponytail skill: simplest working thing,
+deletion over addition, nothing speculative. Remaining candidates, each
+with a verdict and the trigger that changes it:
+
+- **`init.py` duplication** (674 byte-identical lines at root and
+  `signoff_mcp/init.py`, pinned by `test_init_scripts_byte_parity`):
+  mechanical debt — the parity test makes it safe, but every change is
+  written twice. Dedupe when packaging allows, or shrink the script itself:
+  the vendor step is the essential one; ruleset/badge/branch automation is
+  optional polish that could become flags-off-by-default.
+- **Transcript-digest machinery** (per-harness adapters, the env-var
+  matrix, snapshot timing rules): the single biggest onboarding/portability
+  tax — it is why HARNESSES.md needs a harness matrix at all — and weakest
+  exactly on cloud sessions, where the transcript dies with the container.
+  Candidate: make the no-digest status the default and digests opt-in.
+  That is a spec-level change (gsa-core §2.2/§2.3 status semantics), to be
+  decided deliberately, not drifted into.
+- **SKILL.md intensity legalese** (~50 lines of tier tables, 4-row clamps,
+  and precedence orders, pinned by the Phase 3f contract test): the
+  adaptive-intensity *idea* earns its keep; the lawyering may not.
+  Candidate: compress to judgment guidance once live runs show the model
+  doesn't need the full matrix. Cost of keeping: comprehension tax on every
+  new reader; cost of cutting: re-litigating the rigor floors the tests pin.
+- **`signoff-mcp` server (~900 lines + tests) and the PyPI publish path**:
+  freeze until someone asks for deterministic server-side enforcement — no
+  adopter of the skill channel has, and the PyPI trusted-publisher setup
+  remains an unspent user action. Keep it out of the adoption path either
+  way.
+- **Escrow spec (`gsa-escrow.md`)**: already evidence-gated — correct
+  shape; no further investment until its gates trip.
+- **Conformance vectors, spec license, in-toto draft**: *not* baggage —
+  they serve the declared moat (standardization) and have produced measured
+  value (the dotgemini convergence exchange under "Path to an open
+  standard"). The tension is placement, not existence: keep the standards
+  apparatus out of the adoption path (README quickstart, HARNESSES.md) so
+  a curious lab never has to read it to install.
+- **`site/` and the seven workflows**: front door and plumbing sized for
+  the current stage; no action.
+
+Resolution rule for future sessions: adoption-path surfaces (README,
+HARNESSES.md, SKILL.md, `init.py`) get ponytail applied hardest — an
+outside user should reach a working `/signoff` reading almost nothing.
+Standards and strategy surfaces (`specs/`, `conformance/`, this document)
+justify their weight by moat milestones, not by user convenience, and are
+allowed to be heavy as long as no install instruction depends on them.
+
+### Known caveats accepted at v0.4.0 (from the branch signoff interview, 2026-08-30)
+
+Recorded so they never need re-derivation; each names its future fix.
+
+- **Unpinned vendor payload (the one silent path).** `vendor_skill`
+  shallow-clones the repo's *default branch at run time*, regardless of
+  which pinned `init.py` tag the user downloaded, and the vendored folder
+  carries no version marker — a pinned-script run silently vendors newer
+  `main` content, and a user cannot tell which skill version they have.
+  Accepted as "install latest" semantics for now. Fix in one move when
+  taken up: clone at a pinned tag and stamp the source commit into the
+  vendored copy (self-describing staleness), then update the caveat in
+  HARNESSES.md.
+- **No update notification.** Vendored copies never self-update or announce
+  releases; update = re-run the initializer or re-copy. Deliberate — the
+  same trust model as any vendored code.
+- **Verifier pin immutability.** Scaffolded workflows pin
+  `verify@verify-v1.2`; pin tags never move, so verifier fixes reach
+  adopters only when they edit the pin or re-run the initializer.
+  Deliberate: a floating pin would let upstream changes silently alter the
+  behavior of downstream *merge gates*, and widens the CI supply-chain
+  surface.
+- **Offline initializer runs fail loudly but mid-scaffold.** With no
+  network, the vendor clone aborts (RuntimeError → exit 1) *after* branch
+  creation and workflow/profile scaffolding: the repo is left on
+  `signoff/init` with `.github/workflows/signoff.yml` and
+  `.signoff/profile.md` unstaged; ruleset/stage/commit never ran.
+  `--skill-source <path>` is the supported offline path (HPC clusters).
+  Cleanup-on-failure is future work.
+- **Symlinked destinations abort loudly.** Re-running the initializer over
+  a user-made `.claude/skills/signoff` symlink fails with a raw `OSError`
+  (`rmtree` refuses symlinks); nothing is deleted through the link. Outside
+  repos should commit real copies — the symlink is this repo's dogfood
+  pattern only. A friendlier message is future polish, not a safety gap.
+- **Old-channel installs are orphaned.** Accounts that installed the
+  retired plugin or zip skill stop receiving anything and are not notified;
+  accepted as a pre-production breaking change (the maintainer removed
+  their own installs 2026-08-30).
+
 ## User actions (cannot be done from a cloud session)
 
 - Purchase custom domain; DNS to Pages.
