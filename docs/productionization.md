@@ -256,6 +256,45 @@ Standards and strategy surfaces (`specs/`, `conformance/`, this document)
 justify their weight by moat milestones, not by user convenience, and are
 allowed to be heavy as long as no install instruction depends on them.
 
+### Known caveats accepted at v0.4.0 (from the branch signoff interview, 2026-08-30)
+
+Recorded so they never need re-derivation; each names its future fix.
+
+- **Unpinned vendor payload (the one silent path).** `vendor_skill`
+  shallow-clones the repo's *default branch at run time*, regardless of
+  which pinned `init.py` tag the user downloaded, and the vendored folder
+  carries no version marker — a pinned-script run silently vendors newer
+  `main` content, and a user cannot tell which skill version they have.
+  Accepted as "install latest" semantics for now. Fix in one move when
+  taken up: clone at a pinned tag and stamp the source commit into the
+  vendored copy (self-describing staleness), then update the caveat in
+  HARNESSES.md.
+- **No update notification.** Vendored copies never self-update or announce
+  releases; update = re-run the initializer or re-copy. Deliberate — the
+  same trust model as any vendored code.
+- **Verifier pin immutability.** Scaffolded workflows pin
+  `verify@verify-v1.2`; pin tags never move, so verifier fixes reach
+  adopters only when they edit the pin or re-run the initializer.
+  Deliberate: a floating pin would let upstream changes silently alter the
+  behavior of downstream *merge gates*, and widens the CI supply-chain
+  surface.
+- **Offline initializer runs fail loudly but mid-scaffold.** With no
+  network, the vendor clone aborts (RuntimeError → exit 1) *after* branch
+  creation and workflow/profile scaffolding: the repo is left on
+  `signoff/init` with `.github/workflows/signoff.yml` and
+  `.signoff/profile.md` unstaged; ruleset/stage/commit never ran.
+  `--skill-source <path>` is the supported offline path (HPC clusters).
+  Cleanup-on-failure is future work.
+- **Symlinked destinations abort loudly.** Re-running the initializer over
+  a user-made `.claude/skills/signoff` symlink fails with a raw `OSError`
+  (`rmtree` refuses symlinks); nothing is deleted through the link. Outside
+  repos should commit real copies — the symlink is this repo's dogfood
+  pattern only. A friendlier message is future polish, not a safety gap.
+- **Old-channel installs are orphaned.** Accounts that installed the
+  retired plugin or zip skill stop receiving anything and are not notified;
+  accepted as a pre-production breaking change (the maintainer removed
+  their own installs 2026-08-30).
+
 ## User actions (cannot be done from a cloud session)
 
 - Purchase custom domain; DNS to Pages.

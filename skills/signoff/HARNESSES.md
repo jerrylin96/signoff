@@ -38,8 +38,14 @@ tree; cloud sessions load it from the clone at session start. Vendor it with
 the zero-touch initializer (README Quickstart) or copy the folder per the
 Portability Rules. `git pull` is the whole update mechanism for
 collaborators; re-running the initializer (or re-copying) bumps the vendored
-copy to a new release. This repository dogfoods the same path via a
-`.claude/skills/signoff` symlink to its own `skills/signoff/`.
+copy to a new release. Vendored copies never self-update or announce new
+releases, and the initializer vendors the default branch's current skill
+content (no version marker yet — caveat log in `docs/productionization.md`);
+offline installs pass `--skill-source <path-to-skills/signoff>`. Commit a
+real copy, not a symlink — re-running the initializer over a symlinked
+destination aborts, since `rmtree` refuses symlinks. This repository
+dogfoods the same path via a `.claude/skills/signoff` symlink to its own
+`skills/signoff/`; that symlink pattern is for this repo only.
 
 A machine-local install also works for local CLI/desktop sessions: copy the
 folder to `~/.claude/skills/signoff` (user-level, all projects). Linked git
