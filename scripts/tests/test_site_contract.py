@@ -35,7 +35,7 @@ def test_site_covers_install_channel_and_links():
     html = _html()
     # One distribution channel: the skill folder vendored into the target repo.
     assert ".claude/skills/signoff/" in html
-    assert "raw.githubusercontent.com/jerrylin96/signoff/init-v1/init.py" in html
+    assert "raw.githubusercontent.com/jerrylin96/signoff/init-v2/init.py" in html
     assert "skills/signoff/specs/gsa-core.md" in html
     assert "HARNESSES.md" in html
     # Retired account-scoped channels must not resurface as install paths.
