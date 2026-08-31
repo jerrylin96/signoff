@@ -169,6 +169,70 @@ def test_vendor_skill_from_local_source(temp_git_repo):
     assert (dest / "specs" / "gsa-core.md").is_file()
     assert (dest / "profiles" / "domain-science.md").is_file()
     assert (dest / "HARNESSES.md").is_file()
+    # Every vendored copy is self-describing: local installs stamp too
+    stamp = (dest / init.VENDOR_STAMP_FILENAME).read_text(encoding="utf-8")
+    assert "ref: local (--skill-source)" in stamp
+    assert str(SKILL_SRC.resolve()) in stamp
+    assert "commit: " in stamp
+
+
+def test_vendor_skill_clones_pinned_ref(temp_git_repo):
+    """The default vendor path clones at SKILL_SOURCE_REF, never the default
+    branch, and stamps the source commit — the v0.4.0 'unpinned vendor
+    payload' caveat closed."""
+    import shutil as _shutil
+
+    clone_cmds = []
+    fake_sha = "d" * 40
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "clone"]:
+            clone_cmds.append(cmd)
+            _shutil.copytree(SKILL_SRC, Path(cmd[-1]) / "skills" / "signoff")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[:2] == ["git", "-C"] and "rev-parse" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout=fake_sha + "\n", stderr="")
+        raise AssertionError(f"unexpected subprocess call: {cmd}")
+
+    with patch.object(init.subprocess, "run", side_effect=fake_run):
+        init.vendor_skill(temp_git_repo)
+
+    (clone_cmd,) = clone_cmds
+    ref_idx = clone_cmd.index("--branch") + 1
+    assert clone_cmd[ref_idx] == init.SKILL_SOURCE_REF
+    stamp = (
+        temp_git_repo / ".claude" / "skills" / "signoff" / init.VENDOR_STAMP_FILENAME
+    ).read_text(encoding="utf-8")
+    assert f"ref: {init.SKILL_SOURCE_REF}" in stamp
+    assert f"commit: {fake_sha}" in stamp
+    assert f"source: {init.SKILL_SOURCE_REPO}" in stamp
+
+
+def test_skill_source_ref_pin_consistency():
+    """SKILL_SOURCE_REF must be a tag tag.yml actually creates, and the tag
+    every install snippet serves init.py from — one moving part, bumped
+    together, or pinned-script runs vendor a payload that doesn't exist or
+    doesn't match."""
+    import re
+
+    repo_root = Path(__file__).parent.parent
+    ref = init.SKILL_SOURCE_REF
+
+    tag_wf = (repo_root / ".github" / "workflows" / "tag.yml").read_text(encoding="utf-8")
+    m = re.search(r"^\s*PINS:\s*(.+?)\s*$", tag_wf, re.MULTILINE)
+    assert m, "PINS not declared in tag.yml"
+    assert ref in m.group(1).split(), (
+        f"SKILL_SOURCE_REF {ref!r} missing from tag.yml PINS — the pin tag would never be created"
+    )
+
+    snippet_re = re.compile(r"jerrylin96/signoff/(init-v[\w.]+)/init\.py")
+    for rel in ("README.md", "verify/README.md", "site/index.html"):
+        text = (repo_root / rel).read_text(encoding="utf-8")
+        served = snippet_re.findall(text)
+        assert served, f"{rel} has no pinned init.py install snippet"
+        assert set(served) == {ref}, (
+            f"{rel} serves init.py at {sorted(set(served))}, but SKILL_SOURCE_REF is {ref!r}"
+        )
 
 
 def test_vendor_skill_replaces_existing(temp_git_repo):

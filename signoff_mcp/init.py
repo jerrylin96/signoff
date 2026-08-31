@@ -288,6 +288,22 @@ def scaffold_profile(repo_root: Path, profile_id: str = "domain-science") -> Pat
 
 
 SKILL_SOURCE_REPO = "https://github.com/jerrylin96/signoff"
+# Pin tag the default vendor clone fetches — the same tag the install
+# snippets serve this script from, so the vendored payload matches the
+# script version instead of silently tracking the default branch. Pin tags
+# never move; bump this together with the install snippets (README,
+# verify/README.md, site/index.html) and tag.yml's PINS list.
+SKILL_SOURCE_REF = "init-v3"
+VENDOR_STAMP_FILENAME = "VENDORED-FROM"
+
+
+def _git_head_commit(git_dir: Path) -> str:
+    proc = subprocess.run(
+        ["git", "-C", str(git_dir), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    return proc.stdout.strip() if proc.returncode == 0 else "unknown"
 
 
 def vendor_skill(repo_root: Path, source: Optional[Path] = None) -> Path:
@@ -298,33 +314,58 @@ def vendor_skill(repo_root: Path, source: Optional[Path] = None) -> Path:
     sessions, with nothing account-scoped to install. Re-running replaces the
     copy, which is how the skill is updated.
 
-    source: local directory holding the skill folder (offline installs, tests);
-    default is a fresh shallow clone of the signoff repository.
+    The default source is a shallow clone of the signoff repository at the
+    pinned tag SKILL_SOURCE_REF. Every vendored copy carries a VENDORED-FROM
+    stamp recording the source, ref, and commit, so a vendored folder is
+    self-describing about which skill version it holds.
+
+    source: local directory holding the skill folder (offline installs, tests).
     """
     dest = repo_root / ".claude" / "skills" / "signoff"
 
-    def _copy(src: Path) -> Path:
+    def _copy(src: Path, source_desc: str, ref: str, commit: str) -> Path:
         if not (src / "SKILL.md").is_file():
             raise RuntimeError(f"Skill source {src} does not contain SKILL.md")
         if dest.exists():
             shutil.rmtree(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(src, dest)
+        stamp = (
+            "Vendored /signoff skill — provenance stamp written by init.py; do not edit.\n"
+            f"source: {source_desc}\n"
+            f"ref: {ref}\n"
+            f"commit: {commit}\n"
+        )
+        (dest / VENDOR_STAMP_FILENAME).write_text(stamp, encoding="utf-8")
         return dest
 
     if source is not None:
-        return _copy(Path(source))
+        src = Path(source)
+        return _copy(
+            src,
+            source_desc=str(src.resolve()),
+            ref="local (--skill-source)",
+            commit=_git_head_commit(src),
+        )
 
     with tempfile.TemporaryDirectory(prefix="signoff-skill-") as tmp:
         clone_dir = Path(tmp) / "signoff"
         proc = subprocess.run(
-            ["git", "clone", "--depth", "1", SKILL_SOURCE_REPO, str(clone_dir)],
+            ["git", "clone", "--depth", "1", "--branch", SKILL_SOURCE_REF, SKILL_SOURCE_REPO, str(clone_dir)],
             capture_output=True,
             text=True,
         )
         if proc.returncode != 0:
-            raise RuntimeError(f"Failed to fetch the signoff skill: {proc.stderr.strip()}")
-        return _copy(clone_dir / "skills" / "signoff")
+            raise RuntimeError(
+                f"Failed to fetch the signoff skill at pin {SKILL_SOURCE_REF}"
+                f" (offline installs: --skill-source <path>): {proc.stderr.strip()}"
+            )
+        return _copy(
+            clone_dir / "skills" / "signoff",
+            source_desc=SKILL_SOURCE_REPO,
+            ref=SKILL_SOURCE_REF,
+            commit=_git_head_commit(clone_dir),
+        )
 
 
 def inject_readme_badge(repo_root: Path, slug: str) -> Path:

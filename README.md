@@ -52,7 +52,7 @@ you'd notice drift outside them. That is exactly the part a human must own.
 Inside your repository root, run the zero-touch initializer (Python 3.10+ stdlib only — zero dependencies):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v2/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v3/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
 ```
 
 The script automatically:
@@ -80,11 +80,12 @@ You: Confirmed, my email is dev@example.com.
 AI: ✅ Attestation commit [SIGNOFF a1b2c3d] created! Your badge is green.
 ```
 
-## How to use it: three steps
+## How to use it: four steps
 
 1. **Install** — run the 60-second initializer above, or pick the one row for your harness below.
-2. **Run** — from the branch you want to merge, type `/signoff` (adaptive default auto-selects intensity from diff; `--deep` for skeptical rigor, `--quick` for low-risk diffs subject to safety clamps).
-3. **Answer and confirm** — respond in your own words, acknowledge the named trade-offs and risks, confirm your email. The attestation commit and note are created and pushed with your branch.
+2. **Open the PR** — review the diff as usual (when the branch's commits are well-structured, reading them one at a time shows what changed when and why far better than one squashed diff); the `verify-signoff` check runs red until the branch ends in a valid attestation. Attest *after* the diff is final: the attestation must be the last commit on the branch, so pushing anything after it turns the check red again (just re-run `/signoff`).
+3. **Run** — from the branch you want to merge, type `/signoff` (adaptive default auto-selects intensity from diff; `--deep` for skeptical rigor, `--quick` for low-risk diffs subject to safety clamps).
+4. **Answer, confirm, merge** — respond in your own words, acknowledge the named trade-offs and risks, confirm your email. The attestation commit and note are created and pushed with your branch; when `verify-signoff` turns green, merge as usual.
 
 ---
 
@@ -97,7 +98,7 @@ nothing account-scoped.
 
 | Where you work | One-time action |
 |---|---|
-| **Any repository (Zero-touch)** | `curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v2/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py` |
+| **Any repository (Zero-touch)** | `curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v3/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py` |
 | **Any repository (manual)** | Copy this repo's `skills/signoff/` folder to `<your-repo>/.claude/skills/signoff/` and commit. That's the whole install for Claude Code — CLI, desktop, and claude.ai web/cloud sessions. Update by re-copying (or re-running the initializer) on new releases. |
 | **Other harnesses (Antigravity, Codex, Goose, …)** | Same folder, different location: copy `skills/signoff/` into your harness's skill directory and set the transcript adapter env vars — full matrix in [HARNESSES.md](skills/signoff/HARNESSES.md). |
 
