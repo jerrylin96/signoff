@@ -260,15 +260,16 @@ allowed to be heavy as long as no install instruction depends on them.
 
 Recorded so they never need re-derivation; each names its future fix.
 
-- **Unpinned vendor payload (the one silent path).** `vendor_skill`
-  shallow-clones the repo's *default branch at run time*, regardless of
-  which pinned `init.py` tag the user downloaded, and the vendored folder
-  carries no version marker — a pinned-script run silently vendors newer
-  `main` content, and a user cannot tell which skill version they have.
-  Accepted as "install latest" semantics for now. Fix in one move when
-  taken up: clone at a pinned tag and stamp the source commit into the
-  vendored copy (self-describing staleness), then update the caveat in
-  HARNESSES.md.
+- **Unpinned vendor payload (the one silent path) — FIXED 2026-08-31.**
+  `vendor_skill` used to shallow-clone the repo's *default branch at run
+  time*, regardless of which pinned `init.py` tag the user downloaded, and
+  the vendored folder carried no version marker. Fixed as prescribed, in
+  one move: the clone now happens at the pinned tag `SKILL_SOURCE_REF`
+  (`init-v3`, served by the install snippets and created by tag.yml's PINS
+  list — `test_skill_source_ref_pin_consistency` fails if the three ever
+  drift), and every vendored copy carries a `VENDORED-FROM` stamp (source,
+  ref, commit; `ref: local` for `--skill-source` installs) — self-describing
+  staleness. HARNESSES.md caveat updated in the same change.
 - **No update notification.** Vendored copies never self-update or announce
   releases; update = re-run the initializer or re-copy. Deliberate — the
   same trust model as any vendored code.
