@@ -1,0 +1,18 @@
+[SIGNOFF 9a86572]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-31T19:57:01Z
+Signoff-Base-SHA: e027403d9a94186454196e7391de868d8164ed54
+Signoff-Reviewed-Commit-SHA: 9a865720cc64cb730b377b2cdf4c4b04cc1322dc
+Signoff-Reviewed-Tree-SHA: 66cc1fe6f6f610b290ff60a94a9c07f0ca91f0e3
+Signoff-Harness-ID: claude-code
+Signoff-Conversation-ID: d698bba1-396a-5960-9285-cc2dcfb78649
+Signoff-Transcript-Digest: sha256:57c861b49b2fb7faa618d52ccb0a2e96b03eadfb60437e1576c4fa0a7347ced1
+Signoff-Transcript-Bytes: 886458
+Signoff-Tradeoff: pinned vendoring trades automatic freshness for version fidelity - upgrades reach users only through explicit re-initialization from the current snippet (immutability tax)
+Signoff-Tradeoff: VENDORED-FROM stamp is unsigned self-description, not proof; stamp integrity cannot exceed folder integrity, content-hash hardening backlogged in docs/productionization.md
+Signoff-Risk: legacy init-v2 scripts keep vendoring unpinned default-branch content silently until old bookmarks die; this change cannot reach that population
+Signoff-Risk: install snippets 404 between merge and tag.yml creating init-v3; three-way pin drift (constant, PINS, snippets) is guarded pre-merge only by test_skill_source_ref_pin_consistency
+Signoff-Verified-By: jlin404@bu.edu
+Signoff-Agent: harness=claude-code/2.1.42 model=claude-fable-5 reasoning=high interview=standard/software-general
