@@ -37,9 +37,11 @@ self-contained folder committed to the repository under review at
 tree; cloud sessions load it from the clone at session start. Vendor it with
 the zero-touch initializer (README Quickstart) or copy the folder per the
 Portability Rules. `git pull` is the whole update mechanism for
-collaborators; re-running the initializer (or re-copying) bumps the vendored
-copy to a new release. Vendored copies never self-update or announce new
-releases; the initializer vendors the skill at the same pinned tag the
+collaborators; updating the vendored copy means re-running the initializer
+*from the current README snippet* (or re-copying the folder) — a previously
+downloaded script re-vendors its own pinned version, never silently newer
+content. Vendored copies never self-update or announce new releases; the
+initializer vendors the skill at the same pinned tag the
 install snippet serves the script from, and stamps source, ref, and commit
 into a `VENDORED-FROM` file inside the copy — so any vendored folder tells
 you exactly which version it holds. Offline installs pass
