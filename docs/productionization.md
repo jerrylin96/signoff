@@ -270,6 +270,16 @@ Recorded so they never need re-derivation; each names its future fix.
   drift), and every vendored copy carries a `VENDORED-FROM` stamp (source,
   ref, commit; `ref: local` for `--skill-source` installs) — self-describing
   staleness. HARNESSES.md caveat updated in the same change.
+- **`VENDORED-FROM` stamp is claim, not proof (2026-08-31).** The stamp is
+  plain text with no signature or content hash: it self-describes provenance
+  for honest users but cannot prove it — a hand-edited stamp, or skill files
+  modified after vendoring, go undetected. Accepted at the init-v3 signoff
+  interview: anyone positioned to forge the stamp can edit the skill files
+  themselves, so stamp integrity cannot exceed folder integrity; in
+  committed repos git history already provides tamper evidence, and the
+  forger's payoff is unclear. Future fix if audit demand appears: record a
+  content hash of the vendored tree alongside ref/commit, verifiable
+  against the source repo.
 - **No update notification.** Vendored copies never self-update or announce
   releases; update = re-run the initializer or re-copy. Deliberate — the
   same trust model as any vendored code.
