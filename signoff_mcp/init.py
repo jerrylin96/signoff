@@ -567,6 +567,84 @@ def prompt_user(prompt_text: str, default: str = "", non_interactive: bool = Fal
     return val or default
 
 
+def _remove_scaffold_path(path: Path) -> None:
+    """Remove a file, directory, or symlink init created. Never follows a
+    symlink (so a user-made symlinked destination is unlinked, not cleared
+    through)."""
+    try:
+        if path.is_symlink() or path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            shutil.rmtree(path)
+    except OSError:
+        pass
+
+
+def _prune_empty_dir(path: Path) -> None:
+    """Remove a directory only if it exists and is empty, so pruning never
+    touches a directory that still holds unrelated user content (e.g. a
+    pre-existing .github/ with other workflows)."""
+    try:
+        if path.is_dir() and not any(path.iterdir()):
+            path.rmdir()
+    except OSError:
+        pass
+
+
+def _rollback_scaffold(
+    root: Path,
+    original_branch: Optional[str],
+    is_unborn: bool,
+    target_branch: str,
+    scaffold_paths: list[Path],
+    preexisting: set[Path],
+) -> None:
+    """Undo a partial init when a step after branch creation fails.
+
+    Without this, an offline vendor clone (or any post-branch failure) strands
+    the repository on the setup branch with half-written, unstaged scaffold
+    files. This restores the repository to exactly the state init found it in:
+    paths init created are removed, tracked files it overwrote (e.g. the README
+    badge) are reverted to HEAD, and the original branch is restored with the
+    abandoned setup branch dropped. Local git state only — a GitHub ruleset
+    already created via `gh` is idempotent and left in place. Best-effort:
+    every step is guarded so rollback never masks the original error.
+    """
+    # 1. Undo file scaffolding.
+    for path in scaffold_paths:
+        if path in preexisting:
+            # A file init overwrote in place (only the README, in practice);
+            # restore its committed content. No-op when it was left unchanged.
+            rel = path.relative_to(root).as_posix()
+            subprocess.run(["git", "checkout", "HEAD", "--", rel], cwd=root, capture_output=True, text=True)
+        else:
+            _remove_scaffold_path(path)
+    # 2. Prune directories init may have created, leaving user content intact.
+    for directory in (
+        root / ".github" / "workflows",
+        root / ".github",
+        root / ".signoff",
+        root / ".claude" / "skills" / "signoff",
+        root / ".claude" / "skills",
+        root / ".claude",
+    ):
+        _prune_empty_dir(directory)
+    # 3. Restore the starting branch and drop the abandoned setup branch.
+    if is_unborn:
+        # No commits exist, so there is no setup-branch ref to delete; just
+        # point HEAD back at the original unborn branch.
+        if original_branch:
+            subprocess.run(["git", "symbolic-ref", "HEAD", f"refs/heads/{original_branch}"], cwd=root, capture_output=True, text=True)
+    elif original_branch:
+        subprocess.run(["git", "checkout", original_branch], cwd=root, capture_output=True, text=True)
+        subprocess.run(["git", "branch", "-D", target_branch], cwd=root, capture_output=True, text=True)
+    else:
+        # Detached HEAD at start: re-detach at the current commit (the setup
+        # branch shares it), then drop the branch name.
+        subprocess.run(["git", "checkout", "--detach"], cwd=root, capture_output=True, text=True)
+        subprocess.run(["git", "branch", "-D", target_branch], cwd=root, capture_output=True, text=True)
+
+
 def run_init(
     repo_root: Optional[Path] = None,
     profile_id: Optional[str] = None,
@@ -603,50 +681,67 @@ def run_init(
         else:
             print(f"  ℹ️  Notice: Base branch '{base_ref}' not found locally or on origin; branching '{target_branch}' from HEAD.")
             proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch], cwd=root, capture_output=True, text=True)
-            
+
         if proc.returncode != 0:
             raise RuntimeError(f"Failed to create branch '{target_branch}': {proc.stderr.strip()}")
 
-    # Step 3: Profile selection
-    rec_profile = detect_recommended_profile(root)
-    effective_profile = profile_id or rec_profile
-    print("\n[2/5] 📦 Selecting interview profile...")
-    print(f"  Recommended profile: {rec_profile}")
-    if not non_interactive and profile_id is None:
-        print("  1) domain-science (research, physics, ML, climate, math)")
-        print("  2) software-general (classic engineering, APIs, algorithms)")
-        choice = prompt_user("Select profile number or name", default=rec_profile, non_interactive=non_interactive)
-        if choice in ("1", "domain-science"):
-            effective_profile = "domain-science"
-        elif choice in ("2", "software-general"):
-            effective_profile = "software-general"
-    print(f"  Active profile: {effective_profile}")
+    # The branch now exists and later steps write files onto it. If any of them
+    # fails (most commonly an offline vendor clone), roll the whole thing back
+    # so the run is atomic: either a complete setup commit or no trace at all.
+    scaffold_paths = [
+        root / ".github" / "workflows" / "signoff.yml",
+        root / ".signoff" / "profile.md",
+        root / ".signoff" / "ruleset.json",
+        root / ".claude" / "skills" / "signoff",
+        root / "README.md",
+    ]
+    preexisting = {p for p in scaffold_paths if p.exists()}
+    try:
+        # Step 3: Profile selection
+        rec_profile = detect_recommended_profile(root)
+        effective_profile = profile_id or rec_profile
+        print("\n[2/5] 📦 Selecting interview profile...")
+        print(f"  Recommended profile: {rec_profile}")
+        if not non_interactive and profile_id is None:
+            print("  1) domain-science (research, physics, ML, climate, math)")
+            print("  2) software-general (classic engineering, APIs, algorithms)")
+            choice = prompt_user("Select profile number or name", default=rec_profile, non_interactive=non_interactive)
+            if choice in ("1", "domain-science"):
+                effective_profile = "domain-science"
+            elif choice in ("2", "software-general"):
+                effective_profile = "software-general"
+        print(f"  Active profile: {effective_profile}")
 
-    # Step 4: Scaffold files
-    scaffold_workflow(root, default_branch=ctx.default_branch)
-    scaffold_profile(root, profile_id=effective_profile)
-    vendor_skill(root, source=skill_source)
-    if effective_slug and not skip_badge:
-        inject_readme_badge(root, slug=effective_slug)
+        # Step 4: Scaffold files
+        scaffold_workflow(root, default_branch=ctx.default_branch)
+        scaffold_profile(root, profile_id=effective_profile)
+        vendor_skill(root, source=skill_source)
+        if effective_slug and not skip_badge:
+            inject_readme_badge(root, slug=effective_slug)
 
-    # Step 5: Ruleset setup
-    ruleset_res = setup_ruleset(
-        root,
-        slug=effective_slug,
-        open_browser=open_browser,
-        skip_ruleset=skip_ruleset,
-    )
+        # Step 5: Ruleset setup
+        ruleset_res = setup_ruleset(
+            root,
+            slug=effective_slug,
+            open_browser=open_browser,
+            skip_ruleset=skip_ruleset,
+        )
 
-    # Step 6: Stage and commit
-    stage_signoff_files(root)
-    commit_proc = subprocess.run(
-        ["git", "commit", "-m", "chore: scaffold git signoff attestation"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-    )
-    if commit_proc.returncode != 0:
-        raise RuntimeError(f"Git commit failed: {commit_proc.stderr.strip()}")
+        # Step 6: Stage and commit
+        stage_signoff_files(root)
+        commit_proc = subprocess.run(
+            ["git", "commit", "-m", "chore: scaffold git signoff attestation"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+        if commit_proc.returncode != 0:
+            raise RuntimeError(f"Git commit failed: {commit_proc.stderr.strip()}")
+    except BaseException:
+        _rollback_scaffold(root, ctx.current_branch, ctx.is_unborn, target_branch, scaffold_paths, preexisting)
+        restored = ctx.current_branch or "the previous state"
+        print(f"  ↩️  Rolled back partial setup; repository restored to '{restored}'.", file=sys.stderr)
+        raise
 
     pr_url = f"https://github.com/{effective_slug}/compare/{ctx.default_branch}...{target_branch}?expand=1" if effective_slug else None
 

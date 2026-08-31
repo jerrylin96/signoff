@@ -542,6 +542,108 @@ def test_checkout_failure_leaves_tree_clean(temp_git_repo):
     assert status.strip() == ""
 
 
+def test_vendor_failure_rolls_back_scaffold(temp_git_repo):
+    # A post-branch failure (here: an invalid skill source, standing in for an
+    # offline vendor clone) must leave the repo exactly as it was found — not
+    # stranded on the setup branch with half-written files.
+    empty_src = temp_git_repo.parent / "not-a-skill"
+    empty_src.mkdir()
+
+    with pytest.raises(RuntimeError, match="does not contain SKILL.md"):
+        init.run_init(
+            repo_root=temp_git_repo,
+            branch="signoff/init",
+            skip_ruleset=True,
+            non_interactive=True,
+            skill_source=empty_src,
+        )
+
+    # Back on the original branch, setup branch gone.
+    current = subprocess.check_output(["git", "branch", "--show-current"], cwd=temp_git_repo, text=True).strip()
+    assert current == "main"
+    branches = subprocess.check_output(["git", "branch"], cwd=temp_git_repo, text=True)
+    assert "signoff/init" not in branches
+
+    # No scaffold artifacts left behind, working tree clean.
+    assert not (temp_git_repo / ".github").exists()
+    assert not (temp_git_repo / ".signoff").exists()
+    assert not (temp_git_repo / ".claude").exists()
+    status = subprocess.check_output(["git", "status", "--porcelain"], cwd=temp_git_repo, text=True)
+    assert status.strip() == ""
+
+
+def test_rollback_preserves_unrelated_dir_content(temp_git_repo):
+    # Rollback prunes only what init created: a pre-existing .github/ with an
+    # unrelated workflow must survive a failed run untouched.
+    other_wf = temp_git_repo / ".github" / "workflows" / "ci.yml"
+    other_wf.parent.mkdir(parents=True)
+    other_wf.write_text("name: ci\n", encoding="utf-8")
+    subprocess.run(["git", "add", ".github/workflows/ci.yml"], cwd=temp_git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "add ci"], cwd=temp_git_repo, check=True)
+
+    empty_src = temp_git_repo.parent / "not-a-skill-2"
+    empty_src.mkdir()
+    with pytest.raises(RuntimeError, match="does not contain SKILL.md"):
+        init.run_init(
+            repo_root=temp_git_repo,
+            branch="signoff/init",
+            skip_ruleset=True,
+            non_interactive=True,
+            skill_source=empty_src,
+        )
+
+    # init's workflow is gone; the unrelated one and its dir remain.
+    assert not (temp_git_repo / ".github" / "workflows" / "signoff.yml").exists()
+    assert other_wf.exists()
+    assert other_wf.read_text(encoding="utf-8") == "name: ci\n"
+    status = subprocess.check_output(["git", "status", "--porcelain"], cwd=temp_git_repo, text=True)
+    assert status.strip() == ""
+
+
+def test_rollback_reverts_readme_badge(temp_git_repo):
+    # A failure after the README badge is injected must restore the committed
+    # README, not leave the badge stranded as an uncommitted modification.
+    original = (temp_git_repo / "README.md").read_text(encoding="utf-8")
+    with patch.object(init, "stage_signoff_files", side_effect=RuntimeError("boom after badge")):
+        with pytest.raises(RuntimeError, match="boom after badge"):
+            init.run_init(
+                repo_root=temp_git_repo,
+                slug="org/proj",
+                branch="signoff/init",
+                skip_ruleset=True,
+                non_interactive=True,
+                skill_source=SKILL_SRC,
+            )
+    assert (temp_git_repo / "README.md").read_text(encoding="utf-8") == original
+    status = subprocess.check_output(["git", "status", "--porcelain"], cwd=temp_git_repo, text=True)
+    assert status.strip() == ""
+
+
+def test_rollback_unborn_head(tmp_path):
+    # A repo with no commits yet must return to its unborn branch on failure.
+    repo = tmp_path / "unborn"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "t@e.com"], cwd=repo, check=True)
+
+    empty_src = tmp_path / "not-a-skill-unborn"
+    empty_src.mkdir()
+    with pytest.raises(RuntimeError, match="does not contain SKILL.md"):
+        init.run_init(
+            repo_root=repo,
+            branch="signoff/init",
+            skip_ruleset=True,
+            non_interactive=True,
+            skill_source=empty_src,
+        )
+
+    current = subprocess.check_output(["git", "branch", "--show-current"], cwd=repo, text=True).strip()
+    assert current == "main"
+    assert not (repo / ".github").exists()
+    assert not (repo / ".signoff").exists()
+
+
 def test_base_branch_origin_fallback(tmp_path):
     # Setup upstream remote with main branch
     origin_dir = tmp_path / "origin.git"
