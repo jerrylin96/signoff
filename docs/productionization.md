@@ -289,13 +289,19 @@ Recorded so they never need re-derivation; each names its future fix.
   Deliberate: a floating pin would let upstream changes silently alter the
   behavior of downstream *merge gates*, and widens the CI supply-chain
   surface.
-- **Offline initializer runs fail loudly but mid-scaffold.** With no
-  network, the vendor clone aborts (RuntimeError → exit 1) *after* branch
-  creation and workflow/profile scaffolding: the repo is left on
-  `signoff/init` with `.github/workflows/signoff.yml` and
-  `.signoff/profile.md` unstaged; ruleset/stage/commit never ran.
-  `--skill-source <path>` is the supported offline path (HPC clusters).
-  Cleanup-on-failure is future work.
+- **Offline initializer runs fail loudly but mid-scaffold — FIXED
+  2026-08-31.** With no network, the vendor clone aborts (RuntimeError →
+  exit 1) *after* branch creation and workflow/profile scaffolding; it used
+  to leave the repo stranded on `signoff/init` with half-written, unstaged
+  files. `run_init` now rolls back atomically: any failure after branch
+  creation removes the paths it created, reverts tracked files it overwrote
+  (the README badge) to HEAD, prunes only the directories it made, and
+  restores the original branch — so a failed run leaves the repository
+  exactly as it found it and is safely re-runnable (born, unborn, and
+  detached-HEAD starts all covered; `test_vendor_failure_rolls_back_scaffold`
+  and neighbors pin it). Rollback restores local git state only; a GitHub
+  ruleset already created via `gh` is idempotent and left in place.
+  `--skill-source <path>` remains the intended offline path (HPC clusters).
 - **Symlinked destinations abort loudly.** Re-running the initializer over
   a user-made `.claude/skills/signoff` symlink fails with a raw `OSError`
   (`rmtree` refuses symlinks); nothing is deleted through the link. Outside
