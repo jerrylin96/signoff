@@ -416,16 +416,18 @@ def _normalize_skill_destinations(
     norm_set: set[str] = set()
     for d in destinations:
         matched_rel = None
+        d_path = Path(d)
         for rel in SKILL_DEST_CANDIDATES:
             cand_path = repo_root / rel
+            if d_path == cand_path or d_path.as_posix() == cand_path.as_posix():
+                matched_rel = rel
+                break
             try:
-                if d.resolve() == cand_path.resolve() or d == cand_path:
+                if d_path.relative_to(repo_root).as_posix() == rel:
                     matched_rel = rel
                     break
-            except OSError:
-                if d == cand_path:
-                    matched_rel = rel
-                    break
+            except ValueError:
+                pass
         if matched_rel is None:
             raise ValueError(f"Destination {d} is not a valid candidate within {SKILL_DEST_CANDIDATES}")
         norm_set.add(matched_rel)
@@ -809,6 +811,7 @@ def _rollback_scaffold(
     target_branch: str,
     scaffold_paths: list[Path],
     preexisting: set[Path],
+    preexisting_dirs: Optional[set[Path]] = None,
 ) -> None:
     """Undo a partial init when a step after branch creation fails.
 
@@ -824,10 +827,20 @@ def _rollback_scaffold(
     # 1. Undo file scaffolding.
     for path in scaffold_paths:
         if path in preexisting:
-            # A file init overwrote in place (only the README, in practice);
-            # restore its committed content. No-op when it was left unchanged.
             rel = path.relative_to(root).as_posix()
-            subprocess.run(["git", "checkout", "HEAD", "--", rel], cwd=root, capture_output=True, text=True)
+            if any(path == root / cand for cand in SKILL_DEST_CANDIDATES):
+                # Pre-existing skill destination: completely remove the destination
+                # directory so newly written untracked files (e.g. VENDORED-FROM)
+                # and newly vendored ignored files are cleared, then restore tracked
+                # content from HEAD.
+                if path.is_dir():
+                    shutil.rmtree(path, ignore_errors=True)
+                elif path.is_file() or path.is_symlink():
+                    path.unlink(missing_ok=True)
+                subprocess.run(["git", "checkout", "HEAD", "--", rel], cwd=root, capture_output=True, text=True)
+            else:
+                # Ordinary pre-existing files (e.g. README.md)
+                subprocess.run(["git", "checkout", "HEAD", "--", rel], cwd=root, capture_output=True, text=True)
         else:
             _remove_scaffold_path(path)
     # 2. Prune directories init may have created, leaving user content intact.
@@ -842,7 +855,8 @@ def _rollback_scaffold(
         root / ".claude" / "skills",
         root / ".claude",
     ):
-        _prune_empty_dir(directory)
+        if preexisting_dirs is None or directory not in preexisting_dirs:
+            _prune_empty_dir(directory)
     # 3. Restore the starting branch and drop the abandoned setup branch.
     if is_unborn:
         # No commits exist, so there is no setup-branch ref to delete; just
@@ -922,6 +936,18 @@ def run_init(
         root / "README.md",
     ]
     preexisting = {p for p in scaffold_paths if p.exists()}
+    ancestor_candidates = [
+        root / ".github",
+        root / ".github" / "workflows",
+        root / ".signoff",
+        root / ".claude",
+        root / ".claude" / "skills",
+        root / ".claude" / "skills" / "signoff",
+        root / ".agents",
+        root / ".agents" / "skills",
+        root / ".agents" / "skills" / "signoff",
+    ]
+    preexisting_dirs = {d for d in ancestor_candidates if d.is_dir()}
     try:
         # Step 3: Profile selection
         rec_profile = detect_recommended_profile(root)
@@ -964,7 +990,15 @@ def run_init(
         if commit_proc.returncode != 0:
             raise RuntimeError(f"Git commit failed: {commit_proc.stderr.strip()}")
     except BaseException:
-        _rollback_scaffold(root, ctx.current_branch, ctx.is_unborn, target_branch, scaffold_paths, preexisting)
+        _rollback_scaffold(
+            root,
+            ctx.current_branch,
+            ctx.is_unborn,
+            target_branch,
+            scaffold_paths,
+            preexisting,
+            preexisting_dirs=preexisting_dirs,
+        )
         restored = ctx.current_branch or "the previous state"
         print(f"  ↩️  Rolled back partial setup; repository restored to '{restored}'.", file=sys.stderr)
         raise

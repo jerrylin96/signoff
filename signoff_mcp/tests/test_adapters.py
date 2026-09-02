@@ -189,4 +189,3 @@ def test_codex_adapter_missing_rollout(tmp_path):
     home = tmp_path / "home"
     a = CodexAdapter("nonexistent", home=str(home))
     assert a.fetch_transcript_bytes() is None
-

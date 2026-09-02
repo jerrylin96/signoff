@@ -99,8 +99,13 @@ nothing account-scoped.
 | Where you work | One-time action |
 |---|---|
 | **Any repository (Zero-touch)** | `curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v4/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py` (use `--skill-target {auto,claude,agents,both}` to control destinations) |
-| **Any repository (manual)** | Copy this repo's `skills/signoff/` folder to `<your-repo>/.claude/skills/signoff/` (Claude Code) or `<your-repo>/.agents/skills/signoff/` (Antigravity, Codex, Cursor, etc.) and commit. Update by re-copying (or re-running the initializer) on new releases. |
-| **Other harnesses (Antigravity, Codex, Cursor, …)** | Same folder, standard open-skills location: copy `skills/signoff/` into `.agents/skills/signoff` (or `.claude/skills/signoff`) and set the transcript adapter env vars — full matrix in [HARNESSES.md](skills/signoff/HARNESSES.md). |
+| **Any repository (manual)** | Copy this repo's `skills/signoff/` folder to `<your-repo>/.claude/skills/signoff/` (Claude Code) or `<your-repo>/.agents/skills/signoff/` (Antigravity, Codex, Cursor, etc.) and commit before running the initializer; an untracked skill destination now aborts as an unrelated working-tree change. Update by re-copying (or re-running the initializer) on new releases. |
+| **Other harnesses (Antigravity, Codex, Cursor, …)** | Same folder, cross-client convention: copy `skills/signoff/` into `.agents/skills/signoff` (or `.claude/skills/signoff`) and set the transcript adapter env vars — full matrix in [HARNESSES.md](skills/signoff/HARNESSES.md). |
+
+> [!NOTE]
+> **Initializer Flags & Policy A:**
+> - `--skill-target {auto,claude,agents,both}`: Selects target client destinations (defaults to auto-detect based on repo markers).
+> - `--allow-dirty`: Bypasses the pre-flight clean-tree check and the check for pre-existing ignored untracked files inside the destination; it does **not** bypass Policy A refusals for symbolic links, parent path collisions, unrelated non-empty directories, or destination-level `.gitignore` rules. Any uncommitted state inside a skill destination admitted via `--allow-dirty` is overwritten during vendoring and cannot be recovered by rollback.
 
 ## Make it yours: changing what gets asked
 

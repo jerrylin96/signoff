@@ -1145,6 +1145,179 @@ def test_end_to_end_explicit_target(temp_git_repo):
     assert result.destinations == [agents]
 
 
+def _dir_snapshot(dir_path: Path) -> dict[str, str | None]:
+    import hashlib
+    snapshot = {}
+    for p in sorted(dir_path.rglob("*")):
+        rel = p.relative_to(dir_path).as_posix()
+        if p.is_dir():
+            snapshot[rel] = None
+        elif p.is_file() or p.is_symlink():
+            snapshot[rel] = hashlib.sha256(p.read_bytes()).hexdigest()
+    return snapshot
+
+
+def test_rollback_preserves_preexisting_empty_ancestor_dirs_claude_to_agents(temp_git_repo):
+    """Empty pre-existing .agents/ or .agents/skills/ is NOT pruned on a claude-only run failure."""
+    empty_agents_skills = temp_git_repo / ".agents" / "skills"
+    empty_agents_skills.mkdir(parents=True)
+
+    with patch.object(init, "stage_signoff_files", side_effect=RuntimeError("forced post-scaffold failure")):
+        with pytest.raises(RuntimeError, match="forced post-scaffold failure"):
+            init.run_init(
+                repo_root=temp_git_repo,
+                skip_ruleset=True,
+                non_interactive=True,
+                skill_source=SKILL_SRC,
+                skill_target="claude",
+            )
+
+    assert empty_agents_skills.is_dir()
+    assert (temp_git_repo / ".agents").is_dir()
+    assert not (temp_git_repo / ".claude").exists()
+
+
+def test_rollback_preserves_preexisting_empty_ancestor_dirs_agents_to_claude(temp_git_repo):
+    """Empty pre-existing .claude/ is NOT pruned on an agents-only run failure."""
+    empty_claude_skills = temp_git_repo / ".claude" / "skills"
+    empty_claude_skills.mkdir(parents=True)
+
+    with patch.object(init, "stage_signoff_files", side_effect=RuntimeError("forced post-scaffold failure")):
+        with pytest.raises(RuntimeError, match="forced post-scaffold failure"):
+            init.run_init(
+                repo_root=temp_git_repo,
+                skip_ruleset=True,
+                non_interactive=True,
+                skill_source=SKILL_SRC,
+                skill_target="agents",
+            )
+
+    assert empty_claude_skills.is_dir()
+    assert (temp_git_repo / ".claude").is_dir()
+    assert not (temp_git_repo / ".agents").exists()
+
+
+def test_rollback_preexisting_skill_destination_unstamped_install(temp_git_repo):
+    """Commit an unstamped install, force failure after vendor_skill(), verify pristine restore."""
+    dest = temp_git_repo / ".claude" / "skills" / "signoff"
+    shutil.copytree(SKILL_SRC, dest)
+    (dest / init.VENDOR_STAMP_FILENAME).unlink(missing_ok=True)
+    subprocess.run(["git", "add", ".claude/skills/signoff"], cwd=temp_git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Commit unstamped skill"], cwd=temp_git_repo, check=True)
+
+    before_snapshot = _dir_snapshot(dest)
+
+    with patch.object(init, "stage_signoff_files", side_effect=RuntimeError("forced failure after vendoring")):
+        with pytest.raises(RuntimeError, match="forced failure after vendoring"):
+            init.run_init(
+                repo_root=temp_git_repo,
+                skip_ruleset=True,
+                non_interactive=True,
+                skill_source=SKILL_SRC,
+                skill_target="claude",
+            )
+
+    after_snapshot = _dir_snapshot(dest)
+    assert after_snapshot == before_snapshot
+    status = subprocess.check_output(
+        ["git", "status", "--porcelain", "--ignored", "--untracked-files=all", "--", ".claude/skills/signoff"],
+        cwd=temp_git_repo,
+        text=True,
+    )
+    assert status.strip() == ""
+
+
+def test_rollback_preexisting_skill_destination_ignored_files(temp_git_repo, tmp_path):
+    """Custom skill source with payload.jsonl, .gitignore with *.jsonl, verify rollback clears ignored files."""
+    custom_src = tmp_path / "custom_skill"
+    shutil.copytree(SKILL_SRC, custom_src)
+    (custom_src / "payload.jsonl").write_bytes(b'{"key": "value"}\n')
+
+    dest = temp_git_repo / ".claude" / "skills" / "signoff"
+    dest.mkdir(parents=True)
+    (dest / "SKILL.md").write_text("# prior install\n", encoding="utf-8")
+    gitignore = temp_git_repo / ".gitignore"
+    gitignore.write_text("*.jsonl\n", encoding="utf-8")
+    subprocess.run(["git", "add", ".claude/skills/signoff", ".gitignore"], cwd=temp_git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Commit prior install and gitignore"], cwd=temp_git_repo, check=True)
+
+    before_snapshot = _dir_snapshot(dest)
+
+    with patch.object(init, "stage_signoff_files", side_effect=RuntimeError("forced failure after vendoring")):
+        with pytest.raises(RuntimeError, match="forced failure after vendoring"):
+            init.run_init(
+                repo_root=temp_git_repo,
+                skip_ruleset=True,
+                non_interactive=True,
+                skill_source=custom_src,
+                skill_target="claude",
+            )
+
+    after_snapshot = _dir_snapshot(dest)
+    assert after_snapshot == before_snapshot
+    status = subprocess.check_output(
+        ["git", "status", "--porcelain", "--ignored", "--untracked-files=all", "--", ".claude/skills/signoff"],
+        cwd=temp_git_repo,
+        text=True,
+    )
+    assert status.strip() == ""
+
+
+def test_normalize_skill_destinations_symlink_cross_candidate(temp_git_repo):
+    """With .agents/skills/signoff symlinked to .claude/skills/signoff,
+    vendor_skill(destinations=[agents]) must raise the Policy A symlink refusal
+    and .claude/skills/signoff must be byte-for-byte untouched."""
+    claude = temp_git_repo / ".claude" / "skills" / "signoff"
+    claude.mkdir(parents=True)
+    (claude / "SKILL.md").write_text("# original claude skill", encoding="utf-8")
+    (claude / "extra.txt").write_text("original content", encoding="utf-8")
+    claude_snapshot = _dir_snapshot(claude)
+
+    agents = temp_git_repo / ".agents" / "skills" / "signoff"
+    agents.parent.mkdir(parents=True, exist_ok=True)
+    agents.symlink_to(claude)
+
+    with pytest.raises(RuntimeError, match=r"Destination .agents/skills/signoff is a symbolic link"):
+        init.vendor_skill(temp_git_repo, source=SKILL_SRC, destinations=[agents])
+
+    assert _dir_snapshot(claude) == claude_snapshot
+
+
+def test_vendor_skill_clones_pinned_ref_multi_destination_single_clone(temp_git_repo):
+    """Multi-destination vendor_skill executes exactly one git clone call."""
+    import shutil as _shutil
+
+    clone_cmds = []
+    fake_sha = "e" * 40
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "clone"]:
+            clone_cmds.append(cmd)
+            _shutil.copytree(SKILL_SRC, Path(cmd[-1]) / "skills" / "signoff")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[:2] == ["git", "-C"] and "rev-parse" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout=fake_sha + "\n", stderr="")
+        if cmd[:2] == ["git", "check-ignore"]:
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+        if cmd[:2] == ["git", "ls-files"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        raise AssertionError(f"unexpected subprocess call: {cmd}")
+
+    claude = temp_git_repo / ".claude" / "skills" / "signoff"
+    agents = temp_git_repo / ".agents" / "skills" / "signoff"
+
+    with patch.object(init.subprocess, "run", side_effect=fake_run):
+        ret = init.vendor_skill(temp_git_repo, destinations=[claude, agents])
+
+    assert ret == claude
+    assert len(clone_cmds) == 1
+    for dest in (claude, agents):
+        stamp = (dest / init.VENDOR_STAMP_FILENAME).read_text(encoding="utf-8")
+        assert f"ref: {init.SKILL_SOURCE_REF}" in stamp
+        assert f"commit: {fake_sha}" in stamp
+        assert f"source: {init.SKILL_SOURCE_REPO}" in stamp
+
+
 
 
 

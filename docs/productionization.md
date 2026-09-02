@@ -302,11 +302,17 @@ Recorded so they never need re-derivation; each names its future fix.
   and neighbors pin it). Rollback restores local git state only; a GitHub
   ruleset already created via `gh` is idempotent and left in place.
   `--skill-source <path>` remains the intended offline path (HPC clusters).
-- **Symlinked destinations abort loudly.** Re-running the initializer over
-  a user-made `.claude/skills/signoff` symlink fails with a raw `OSError`
-  (`rmtree` refuses symlinks); nothing is deleted through the link. Outside
-  repos should commit real copies — the symlink is this repo's dogfood
-  pattern only. A friendlier message is future polish, not a safety gap.
+- **Policy A fail-fast validation.** Pre-flight validation (`validate_policy_a`)
+  safeguards destination directories before any branch is created. Symlinks at
+  the destination or in any parent path component, ordinary-file collisions,
+  git-ignored destinations, pre-existing ignored untracked descendants, and
+  unrelated non-empty directories are refused with actionable diagnostic messages.
+  Outside repos should commit real copies — dogfood symlinks at
+  `.claude/skills/signoff` and `.agents/skills/signoff` are this repository's
+  internal pattern only. Limitation with `--allow-dirty`: any uncommitted state
+  inside a skill destination admitted via `--allow-dirty` (tracked modifications,
+  untracked files, ignored descendants) is replaced by vendoring and cannot be
+  reconstructed by rollback, which restores HEAD content only.
 - **Old-channel installs are orphaned.** Accounts that installed the
   retired plugin or zip skill stop receiving anything and are not notified;
   accepted as a pre-production breaking change (the maintainer removed
