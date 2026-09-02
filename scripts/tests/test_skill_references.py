@@ -140,14 +140,14 @@ def test_no_non_portable_file_links():
 
 def test_repo_dogfoods_project_skill():
     """This repo ships the per-repo channel it documents: .claude/skills/signoff
-    resolves (via symlink) to the canonical skills/signoff folder."""
+    and .agents/skills/signoff resolve (via symlink) to the canonical skills/signoff folder."""
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    vendored = os.path.join(root_dir, ".claude", "skills", "signoff")
-    assert os.path.isdir(vendored), ".claude/skills/signoff missing"
-    assert os.path.isfile(os.path.join(vendored, "SKILL.md"))
-    assert os.path.realpath(vendored) == os.path.realpath(
-        os.path.join(root_dir, "skills", "signoff")
-    ), ".claude/skills/signoff must resolve to skills/signoff"
+    canonical = os.path.realpath(os.path.join(root_dir, "skills", "signoff"))
+    for rel in [".claude/skills/signoff", ".agents/skills/signoff"]:
+        vendored = os.path.join(root_dir, *rel.split("/"))
+        assert os.path.isdir(vendored), f"{rel} missing"
+        assert os.path.isfile(os.path.join(vendored, "SKILL.md")), f"{rel}/SKILL.md missing"
+        assert os.path.realpath(vendored) == canonical, f"{rel} must resolve to skills/signoff"
 
 
 def test_skill_folder_is_self_contained():

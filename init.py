@@ -15,9 +15,14 @@ import sys
 import tempfile
 import time
 import webbrowser
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+SKILL_DEST_CANDIDATES: tuple[str, ...] = (
+    ".claude/skills/signoff",
+    ".agents/skills/signoff",
+)
 
 PROFILES: dict[str, str] = {
     "domain-science": """<!-- INTERVIEW-PROFILE:BEGIN (sole customization point — replace only this block) -->
@@ -148,6 +153,7 @@ class InitResult:
     branch: str
     ruleset: RulesetResult
     pr_url: Optional[str] = None
+    destinations: list[Path] = field(default_factory=list)
 
 
 def is_valid_slug(slug: str) -> bool:
@@ -306,38 +312,232 @@ def _git_head_commit(git_dir: Path) -> str:
     return proc.stdout.strip() if proc.returncode == 0 else "unknown"
 
 
-def vendor_skill(repo_root: Path, source: Optional[Path] = None) -> Path:
-    """Copy the self-contained skills/signoff folder into <repo>/.claude/skills/signoff.
+def _existing_skill_installs(repo_root: Path) -> list[Path]:
+    """Return existing skill directories containing SKILL.md (following symlinks)."""
+    return [
+        repo_root / rel
+        for rel in SKILL_DEST_CANDIDATES
+        if (repo_root / rel / "SKILL.md").is_file()
+    ]
 
-    The vendored folder is the sole distribution channel: committed to the
-    repository, it loads for every collaborator in local and cloud Claude Code
-    sessions, with nothing account-scoped to install. Re-running replaces the
-    copy, which is how the skill is updated.
 
-    The default source is a shallow clone of the signoff repository at the
-    pinned tag SKILL_SOURCE_REF. Every vendored copy carries a VENDORED-FROM
-    stamp recording the source, ref, and commit, so a vendored folder is
-    self-describing about which skill version it holds.
-
-    source: local directory holding the skill folder (offline installs, tests).
+def detect_skill_destinations(repo_root: Path) -> list[Path] | None:
+    """Detect destination paths based on existing installations or repository signals.
+    Returns None if the repository has no unambiguous signals (Tier 3).
     """
-    dest = repo_root / ".claude" / "skills" / "signoff"
+    claude_dest = repo_root / ".claude" / "skills" / "signoff"
+    agents_dest = repo_root / ".agents" / "skills" / "signoff"
+
+    # Tier 1: Existing Installation Detection
+    existing = _existing_skill_installs(repo_root)
+    if existing:
+        return existing
+
+    # Tier 2: Filesystem Signal Detection
+    has_claude = (repo_root / ".claude").is_dir() or (repo_root / "CLAUDE.md").is_file()
+    has_agents = (
+        (repo_root / ".agents").is_dir()
+        or (repo_root / ".cursor").is_dir()
+        or (repo_root / "AGENTS.md").is_file()
+        or (repo_root / "GEMINI.md").is_file()
+    )
+
+    if has_claude and not has_agents:
+        return [claude_dest]
+    if has_agents and not has_claude:
+        return [agents_dest]
+    if has_claude and has_agents:
+        return [claude_dest, agents_dest]
+
+    # Tier 3: Greenfield / No Signals
+    return None
+
+
+def resolve_skill_destinations(
+    repo_root: Path,
+    skill_target: str = "auto",
+    non_interactive: bool = False,
+) -> list[Path]:
+    allowed_targets = {"auto", "claude", "agents", "both"}
+    if skill_target not in allowed_targets:
+        raise ValueError(f"Invalid skill_target '{skill_target}'; must be one of {allowed_targets}")
+
+    claude_dest = repo_root / ".claude" / "skills" / "signoff"
+    agents_dest = repo_root / ".agents" / "skills" / "signoff"
+
+    explicit_dests: list[Path] | None = None
+    if skill_target == "claude":
+        explicit_dests = [claude_dest]
+    elif skill_target == "agents":
+        explicit_dests = [agents_dest]
+    elif skill_target == "both":
+        explicit_dests = [claude_dest, agents_dest]
+
+    existing = _existing_skill_installs(repo_root)
+
+    # Expansion Guarantee: Union explicit targets with any existing installations.
+    # Running `--skill-target agents` on a `.claude` install re-vendors `.claude`
+    # to the new release pin while adding `.agents`, preventing version drift.
+    if explicit_dests is not None:
+        union_set = set(explicit_dests) | set(existing)
+        return [repo_root / rel for rel in SKILL_DEST_CANDIDATES if (repo_root / rel) in union_set]
+
+    # skill_target == "auto"
+    detected = detect_skill_destinations(repo_root)
+    if detected is not None:
+        return detected
+
+    # Tier 3 Greenfield (no signals detected)
+    if non_interactive:
+        return [claude_dest, agents_dest]
+
+    print("\nNo existing agent configuration detected.")
+    print("Which harness(es) should /signoff be installed for?")
+    print("  1) Both Claude Code and open-standard agents (Antigravity, Codex, Cursor) [recommended]")
+    print("  2) Claude Code only (.claude/skills/signoff)")
+    print("  3) Open-standard agents only (.agents/skills/signoff)")
+    choice = prompt_user("Select [1-3]", default="1", non_interactive=non_interactive)
+    if choice == "2":
+        return [claude_dest]
+    if choice == "3":
+        return [agents_dest]
+    return [claude_dest, agents_dest]
+
+
+def _normalize_skill_destinations(
+    repo_root: Path,
+    destinations: Optional[list[Path]] = None,
+) -> list[Path]:
+    if destinations is None:
+        return [repo_root / ".claude" / "skills" / "signoff"]
+    if not destinations:
+        raise ValueError("destinations list cannot be empty")
+
+    norm_set: set[str] = set()
+    for d in destinations:
+        matched_rel = None
+        for rel in SKILL_DEST_CANDIDATES:
+            cand_path = repo_root / rel
+            try:
+                if d.resolve() == cand_path.resolve() or d == cand_path:
+                    matched_rel = rel
+                    break
+            except OSError:
+                if d == cand_path:
+                    matched_rel = rel
+                    break
+        if matched_rel is None:
+            raise ValueError(f"Destination {d} is not a valid candidate within {SKILL_DEST_CANDIDATES}")
+        norm_set.add(matched_rel)
+
+    return [repo_root / rel for rel in SKILL_DEST_CANDIDATES if rel in norm_set]
+
+
+def validate_policy_a(dest: Path, repo_root: Path, *, allow_dirty: bool = False) -> None:
+    """Validate destination and all parent path components under repo_root."""
+    rel = dest.relative_to(repo_root)
+
+    # 1. Check parent path components and dest for symlinks and ordinary-file collisions
+    curr = dest
+    components = []
+    while curr != repo_root and curr != curr.parent:
+        components.append(curr)
+        curr = curr.parent
+
+    for part in reversed(components):
+        part_rel = part.relative_to(repo_root)
+        if part.is_symlink():
+            raise RuntimeError(
+                f"Destination {part_rel} is a symbolic link. "
+                "The signoff initializer vendors real directory copies and "
+                "does not replace symlink-managed skill installations. "
+                "Remove the symlink or commit a real copy, then re-run."
+            )
+        if part != dest and part.is_file():
+            raise RuntimeError(
+                f"Parent path {part_rel} exists as an ordinary file. "
+                "Remove the file, then re-run."
+            )
+
+    # 2. Check if destination itself is git-ignored (intent-level check)
+    proc = subprocess.run(
+        ["git", "check-ignore", "--no-index", "-q", "--", str(rel)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode == 0:
+        raise RuntimeError(
+            f"Destination {rel} is ignored by git (.gitignore). "
+            "Remove the ignore pattern before running init."
+        )
+    elif proc.returncode != 1:
+        raise RuntimeError(f"git check-ignore failed with exit code {proc.returncode}: {proc.stderr.strip()}")
+
+    # 3. Check for pre-existing ignored untracked files inside destination
+    if not allow_dirty and dest.is_dir():
+        proc_ls = subprocess.run(
+            ["git", "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", str(rel)],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        if proc_ls.returncode != 0:
+            raise RuntimeError(f"git ls-files failed with exit code {proc_ls.returncode}: {proc_ls.stderr.strip()}")
+        if proc_ls.stdout:
+            ignored_files = [f for f in proc_ls.stdout.split("\0") if f]
+            if ignored_files:
+                raise RuntimeError(
+                    f"Destination {rel} contains ignored untracked files: {', '.join(ignored_files)}. "
+                    "Remove them or use --allow-dirty to override."
+                )
+
+    # 4. Check for ordinary file conflict at destination
+    if dest.is_file():
+        raise RuntimeError(
+            f"Destination {rel} exists as an ordinary file. "
+            "Remove the file, then re-run."
+        )
+
+    # 5. Check for unrelated non-empty directory
+    if dest.is_dir() and not (dest / "SKILL.md").is_file() and any(dest.iterdir()):
+        raise RuntimeError(
+            f"Destination {rel} is a non-empty directory not recognized as a /signoff skill. "
+            "Aborting to prevent data loss."
+        )
+
+
+def vendor_skill(
+    repo_root: Path,
+    source: Optional[Path] = None,
+    *,
+    destinations: Optional[list[Path]] = None,
+    allow_dirty: bool = False,
+) -> Path:
+    """Copy the self-contained skills/signoff folder into destination(s).
+
+    Returns the first canonical destination as Path for backward compatibility.
+    """
+    dests = _normalize_skill_destinations(repo_root, destinations)
+    for d in dests:
+        validate_policy_a(d, repo_root, allow_dirty=allow_dirty)
 
     def _copy(src: Path, source_desc: str, ref: str, commit: str) -> Path:
         if not (src / "SKILL.md").is_file():
             raise RuntimeError(f"Skill source {src} does not contain SKILL.md")
-        if dest.exists():
-            shutil.rmtree(dest)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(src, dest)
         stamp = (
             "Vendored /signoff skill — provenance stamp written by init.py; do not edit.\n"
             f"source: {source_desc}\n"
             f"ref: {ref}\n"
             f"commit: {commit}\n"
         )
-        (dest / VENDOR_STAMP_FILENAME).write_text(stamp, encoding="utf-8")
-        return dest
+        for dest in dests:
+            if dest.exists():
+                shutil.rmtree(dest)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(src, dest)
+            (dest / VENDOR_STAMP_FILENAME).write_text(stamp, encoding="utf-8")
+        return dests[0]
 
     if source is not None:
         src = Path(source)
@@ -366,6 +566,7 @@ def vendor_skill(repo_root: Path, source: Optional[Path] = None) -> Path:
             ref=SKILL_SOURCE_REF,
             commit=_git_head_commit(clone_dir),
         )
+
 
 
 def inject_readme_badge(repo_root: Path, slug: str) -> Path:
@@ -428,7 +629,6 @@ def ensure_clean_working_tree(repo_root: Path, allow_dirty: bool = False):
         ".github/workflows/signoff.yml",
         ".signoff/",
         ".signoff",
-        ".claude/skills/signoff",
         "README.md",
     )
     unrelated_changes = []
@@ -439,7 +639,7 @@ def ensure_clean_working_tree(repo_root: Path, allow_dirty: bool = False):
         path_part = raw_line[3:].strip()
         if path_part.startswith('"') and path_part.endswith('"'):
             path_part = path_part[1:-1]
-        if any(path_part == p or path_part.startswith(p) for p in signoff_prefixes):
+        if any(path_part == p or path_part.startswith(p.rstrip("/") + "/") for p in signoff_prefixes):
             allowlisted_modifications.append(path_part)
         else:
             unrelated_changes.append(raw_line)
@@ -452,12 +652,16 @@ def ensure_clean_working_tree(repo_root: Path, allow_dirty: bool = False):
         print(f"  ℹ️  Note: Existing modifications to {', '.join(set(allowlisted_modifications))} will be staged.")
 
 
-def stage_signoff_files(repo_root: Path):
+def stage_signoff_files(
+    repo_root: Path,
+    *,
+    destinations: Optional[list[Path]] = None,
+) -> None:
+    dests = _normalize_skill_destinations(repo_root, destinations)
     files = [
         ".github/workflows/signoff.yml",
         ".signoff/profile.md",
         ".signoff/ruleset.json",
-        ".claude/skills/signoff",
         "README.md",
     ]
     for f in files:
@@ -466,6 +670,13 @@ def stage_signoff_files(repo_root: Path):
             proc = subprocess.run(["git", "add", f], cwd=repo_root, capture_output=True, text=True)
             if proc.returncode != 0:
                 raise RuntimeError(f"git add {f} failed: {proc.stderr.strip()}")
+
+    for dest in dests:
+        if dest.exists():
+            rel = dest.relative_to(repo_root).as_posix()
+            proc = subprocess.run(["git", "add", "-f", "--", rel], cwd=repo_root, capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise RuntimeError(f"git add -f -- {rel} failed: {proc.stderr.strip()}")
 
 
 def resolve_branch_name(repo_root: Path, desired_branch: str) -> str:
@@ -624,6 +835,9 @@ def _rollback_scaffold(
         root / ".github" / "workflows",
         root / ".github",
         root / ".signoff",
+        root / ".agents" / "skills" / "signoff",
+        root / ".agents" / "skills",
+        root / ".agents",
         root / ".claude" / "skills" / "signoff",
         root / ".claude" / "skills",
         root / ".claude",
@@ -656,15 +870,27 @@ def run_init(
     non_interactive: bool = False,
     open_browser: bool = False,
     skill_source: Optional[Path] = None,
+    skill_target: str = "auto",
 ) -> InitResult:
     ctx = detect_git_context(repo_root)
     root = ctx.root
     effective_slug = slug or ctx.slug
 
-    # Step 1: Clean tree guard
+    # Step 0.1: Clean tree guard
     ensure_clean_working_tree(root, allow_dirty=allow_dirty)
 
-    # Step 2: Checkout target branch FIRST before scaffolding any files
+    # Step 0.2: Resolve skill destinations
+    resolved_dests = resolve_skill_destinations(
+        root,
+        skill_target=skill_target,
+        non_interactive=non_interactive,
+    )
+
+    # Step 0.3: Policy A verification before branch creation
+    for dest in resolved_dests:
+        validate_policy_a(dest, root, allow_dirty=allow_dirty)
+
+    # Step 0.4: Checkout target branch FIRST before scaffolding any files
     target_branch = resolve_branch_name(root, branch)
     if ctx.is_unborn:
         proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch], cwd=root, capture_output=True, text=True)
@@ -692,7 +918,7 @@ def run_init(
         root / ".github" / "workflows" / "signoff.yml",
         root / ".signoff" / "profile.md",
         root / ".signoff" / "ruleset.json",
-        root / ".claude" / "skills" / "signoff",
+        *resolved_dests,
         root / "README.md",
     ]
     preexisting = {p for p in scaffold_paths if p.exists()}
@@ -715,7 +941,7 @@ def run_init(
         # Step 4: Scaffold files
         scaffold_workflow(root, default_branch=ctx.default_branch)
         scaffold_profile(root, profile_id=effective_profile)
-        vendor_skill(root, source=skill_source)
+        vendor_skill(root, source=skill_source, destinations=resolved_dests, allow_dirty=allow_dirty)
         if effective_slug and not skip_badge:
             inject_readme_badge(root, slug=effective_slug)
 
@@ -728,7 +954,7 @@ def run_init(
         )
 
         # Step 6: Stage and commit
-        stage_signoff_files(root)
+        stage_signoff_files(root, destinations=resolved_dests)
         commit_proc = subprocess.run(
             ["git", "commit", "-m", "chore: scaffold git signoff attestation"],
             cwd=root,
@@ -750,6 +976,7 @@ def run_init(
         branch=target_branch,
         ruleset=ruleset_res,
         pr_url=pr_url,
+        destinations=resolved_dests,
     )
 
 
@@ -763,6 +990,7 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--non-interactive", action="store_true", help="Run without interactive prompts")
     parser.add_argument("--open-browser", action="store_true", help="Open GitHub settings in browser if manual fallback is needed")
     parser.add_argument("--skill-source", type=Path, help="Local skills/signoff folder to vendor (offline installs; default: shallow clone)")
+    parser.add_argument("--skill-target", choices=["auto", "claude", "agents", "both"], default="auto", help="Harness destination target (default: auto)")
     return parser.parse_args(args)
 
 
@@ -783,9 +1011,16 @@ def main() -> int:
             non_interactive=args.non_interactive,
             open_browser=args.open_browser,
             skill_source=args.skill_source,
+            skill_target=args.skill_target,
         )
         print(f"\n[3/5] 🌿 Created feature branch '{res.branch}' with scaffold commit.")
-        print("[4/5] 📝 Scaffolded workflow, profile, and vendored the /signoff skill into .claude/skills/signoff.")
+        root_dir = Path.cwd()
+        try:
+            root_dir = detect_git_context().root
+        except Exception:
+            pass
+        dests_str = ", ".join(str(d.relative_to(root_dir)) for d in res.destinations) or ".claude/skills/signoff"
+        print(f"[4/5] 📝 Scaffolded workflow, profile, and vendored the /signoff skill into {dests_str}.")
         
         # Surfacing ruleset status
         if res.ruleset.status == "created":
@@ -810,6 +1045,7 @@ def main() -> int:
     except Exception as e:
         print(f"\n❌ Error during initialization: {e}", file=sys.stderr)
         return 1
+
 
 
 if __name__ == "__main__":
