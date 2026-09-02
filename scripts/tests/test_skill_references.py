@@ -8,8 +8,11 @@ rules; everything else must resolve to a valid in-repo skill.
 """
 
 import glob
+import hashlib
 import os
 import re
+import subprocess
+import sys
 
 # External skills referenced by signoff that degrade gracefully when absent
 # (HARNESSES.md, Portability Rules #3).
@@ -258,6 +261,7 @@ def test_signoff_gsa_protocol_spec_and_trailers():
         "SIGNOFF_TRANSCRIPT_FILE",
         "ANTIGRAVITY_CONVERSATION_ID",
         "CLAUDE_CODE_SESSION_ID",
+        "CODEX_SESSION_ID",
     ]:
         assert adapter_env in signoff_content, f"Missing '{adapter_env}' adapter resolution in skills/signoff/SKILL.md"
 
@@ -516,5 +520,159 @@ def test_signoff_phase3f_adaptive_intensity_contract():
     assert "capped at tier 1" in harnesses_content.lower(), "Missing docs cap mention in HARNESSES.md"
     assert "adaptive default auto-selects intensity" in readme_content.lower(), "Missing adaptive default in README.md"
     assert "adaptive default auto-selects intensity" in site_content.lower(), "Missing adaptive default in site/index.html"
+
+
+def test_embedded_transcript_helper_parity(tmp_path):
+    """Verify Step 3 Python helper extracted from skills/signoff/SKILL.md."""
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    signoff_md = os.path.join(root_dir, "skills", "signoff", "SKILL.md")
+    with open(signoff_md, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    m = re.search(r"python3 - <<'PY' > \"\$TMP_DIGEST_FILE\"\n(.*?)\n\s*PY\n", content, re.DOTALL)
+    assert m, "Could not find python heredoc in skills/signoff/SKILL.md"
+    import textwrap
+    script = textwrap.dedent(m.group(1))
+
+    clean_env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": str(tmp_path / "home"),
+    }
+
+    # Case 1: No harness detected -> unknown, 7 lines, unavailable
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=clean_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "unknown"
+    assert lines[1] == "unavailable"
+    assert lines[2] == "unavailable"
+    assert lines[3] == "unavailable"
+
+    # Case 2: Codex session ID set, rollout present
+    codex_home = tmp_path / "codex_home"
+    sess_dir = codex_home / "sessions" / "2026" / "09" / "02"
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    test_data = b"line1\nline2\n"
+    (sess_dir / "rollout-2026-09-02T12-00-00-test-codex-sid.jsonl").write_bytes(test_data)
+
+    codex_env = dict(clean_env)
+    codex_env["CODEX_SESSION_ID"] = "test-codex-sid"
+    codex_env["CODEX_HOME"] = str(codex_home)
+
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=codex_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "codex-cli"
+    assert lines[1] == "test-codex-sid"
+    assert lines[2] == hashlib.sha256(test_data).hexdigest()
+    assert lines[3] == str(len(test_data))
+
+    # Case 3: Codex session ID set, rollout missing -> unavailable digest
+    missing_env = dict(clean_env)
+    missing_env["CODEX_SESSION_ID"] = "missing-codex-sid"
+    missing_env["CODEX_HOME"] = str(codex_home)
+
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=missing_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "codex-cli"
+    assert lines[1] == "missing-codex-sid"
+    assert lines[2] == "unavailable"
+    assert lines[3] == "unavailable"
+
+    # Case 4: Codex session ID with metacharacters
+    meta_env = dict(clean_env)
+    meta_env["CODEX_SESSION_ID"] = "meta[123]"
+    meta_env["CODEX_HOME"] = str(codex_home)
+    meta_data = b"meta-content\n"
+    (sess_dir / "rollout-2026-09-02T12-00-00-meta[123].jsonl").write_bytes(meta_data)
+    (sess_dir / "rollout-2026-09-02T12-00-00-meta1.jsonl").write_bytes(b"glob-content\n")
+
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=meta_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "codex-cli"
+    assert lines[1] == "meta[123]"
+    assert lines[2] == hashlib.sha256(meta_data).hexdigest()
+    assert lines[3] == str(len(meta_data))
+
+    # Case 5: Deterministic (mtime, path) tie-breaking on equal timestamps
+    tie_env = dict(clean_env)
+    tie_env["CODEX_SESSION_ID"] = "tie-sid"
+    tie_env["CODEX_HOME"] = str(codex_home)
+    f_a = sess_dir / "rollout-2026-09-02T12-00-00-a-tie-sid.jsonl"
+    f_b = sess_dir / "rollout-2026-09-02T12-00-00-b-tie-sid.jsonl"
+    f_a.write_bytes(b"content-a\n")
+    f_b.write_bytes(b"content-b\n")
+    os.utime(f_a, (100, 100))
+    os.utime(f_b, (100, 100))
+
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=tie_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "codex-cli"
+    assert lines[1] == "tie-sid"
+    assert lines[2] == hashlib.sha256(b"content-b\n").hexdigest()
+    assert lines[3] == str(len(b"content-b\n"))
+
+    # Case 6: Default CODEX_HOME (~/.codex/sessions) fallback when CODEX_HOME is unset
+    default_home = tmp_path / "home"
+    default_sess_dir = default_home / ".codex" / "sessions" / "2026" / "09" / "02"
+    default_sess_dir.mkdir(parents=True, exist_ok=True)
+    def_data = b"default-home-data\n"
+    (default_sess_dir / "rollout-2026-09-02T12-00-00-def-sid.jsonl").write_bytes(def_data)
+    def_env = dict(clean_env)
+    def_env["CODEX_SESSION_ID"] = "def-sid"
+
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=def_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "codex-cli"
+    assert lines[1] == "def-sid"
+    assert lines[2] == hashlib.sha256(def_data).hexdigest()
+    assert lines[3] == str(len(def_data))
+
 
 

@@ -104,6 +104,7 @@ graph TD
     MCPServer -->|Fetches Bytes at Commit Time| AdapterFactory[Transcript Adapter Factory]
     AdapterFactory -. Informative Discovery .-> Antigravity[Antigravity Adapter]
     AdapterFactory -. Informative Discovery .-> ClaudeCode[Claude Code Adapter]
+    AdapterFactory -. Informative Discovery .-> Codex[Codex Adapter]
     AdapterFactory -. Informative Discovery .-> GenericFile[Generic File / Env Adapter]
     MCPServer -->|Writes Trailer Commit & Git Note| GitEngine
 ```
@@ -137,7 +138,10 @@ class TranscriptProvider(Protocol):
 2. **`ClaudeCodeAdapter`**:
    - Env: `CLAUDE_CODE_SESSION_ID`
    - Path: `~/.claude/projects/<cwd-path-slug>/<session-id>.jsonl` (where `<cwd-path-slug>` is absolute working directory path with `/` converted to `-`).
-3. **`GenericFileAdapter`**:
+3. **`CodexAdapter`**:
+   - Env: `CODEX_SESSION_ID` (optional `CODEX_HOME`)
+   - Path: `$CODEX_HOME/sessions/**/rollout-*-{session-id}.jsonl` (newest by mtime, tie-broken by path)
+4. **`GenericFileAdapter`**:
    - Env: `SIGNOFF_TRANSCRIPT_FILE=/path/to/transcript.log`
 
 ---

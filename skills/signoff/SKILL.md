@@ -133,13 +133,13 @@ or lower pass criteria:
    After receiving initial user approval, re-verify state: current `HEAD` equals `<reviewed-commit-sha>`, no unstaged changes (`git diff --quiet`), and no staged changes (`git diff --cached --quiet`). If dirty or `HEAD` has moved, stop and declare signoff stale.
 
 3. **Resolve Harness Adapter & Capture Transcript Snapshot:**
-   After recording user confirmation in transcript, resolve the active harness adapter and capture the transcript snapshot (SHA256 digest + exact byte count) immediately before the commit, per GSA snapshot timing rules ([specs/gsa-core.md](specs/gsa-core.md) §2.3). Resolution order: `SIGNOFF_TRANSCRIPT_FILE` explicit override → `ANTIGRAVITY_CONVERSATION_ID` → `CLAUDE_CODE_SESSION_ID`. Execute the Python helper via temporary file with explicit trap cleanup:
+   After recording user confirmation in transcript, resolve the active harness adapter and capture the transcript snapshot (SHA256 digest + exact byte count) immediately before the commit, per GSA snapshot timing rules ([specs/gsa-core.md](specs/gsa-core.md) §2.3). Resolution order: `SIGNOFF_TRANSCRIPT_FILE` explicit override → `ANTIGRAVITY_CONVERSATION_ID` → `CLAUDE_CODE_SESSION_ID` → `CODEX_SESSION_ID`. Execute the Python helper via temporary file with explicit trap cleanup:
    ```bash
    TMP_DIGEST_FILE=$(mktemp) || { echo "Error: mktemp failed. Aborting signoff." >&2; exit 1; }
    trap 'rm -f -- "$TMP_DIGEST_FILE"' EXIT INT TERM
 
    python3 - <<'PY' > "$TMP_DIGEST_FILE"
-   import hashlib, os, re, subprocess
+   import glob, hashlib, os, re, subprocess
 
    TOKEN = re.compile(r"^[A-Za-z0-9._:/-]+$")
 
@@ -182,9 +182,10 @@ or lower pass criteria:
    override = os.environ.get("SIGNOFF_TRANSCRIPT_FILE", "").strip()
    ag_cid = os.environ.get("ANTIGRAVITY_CONVERSATION_ID", "").strip()
    cc_cid = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
+   codex_sid = os.environ.get("CODEX_SESSION_ID", "").strip()
 
    if override:
-       emit("generic-file", ag_cid or cc_cid or None, override)
+       emit("generic-file", ag_cid or cc_cid or codex_sid or None, override)
    elif ag_cid:
        emit("antigravity-cli", ag_cid,
             f"~/.gemini/antigravity-cli/brain/{ag_cid}/.system_generated/logs/transcript.jsonl")
@@ -201,9 +202,24 @@ or lower pass criteria:
            except Exception:
                pass
        emit("claude-code", cc_cid, path)
+   elif codex_sid:
+       base = os.environ.get("CODEX_HOME", "").strip() or os.path.expanduser("~/.codex")
+       escaped_sid = glob.escape(codex_sid)
+       pattern = os.path.join(
+           glob.escape(os.path.join(base, "sessions")),
+           "**",
+           f"rollout-*-{escaped_sid}.jsonl",
+       )
+       try:
+           matches = glob.glob(pattern, recursive=True)
+           path = max(matches, key=lambda p: (os.path.getmtime(p), p)) if matches else None
+       except OSError:
+           path = None
+       emit("codex-cli", codex_sid, path)
    else:
        emit("unknown", None, None)
    PY
+
    DIGEST_STATUS=$?
    { read -r HARNESS_ID; read -r CONV_ID; read -r DIGEST; read -r T_BYTES; \
      read -r AGENT_HVER; read -r AGENT_MODEL; read -r AGENT_REASONING; } < "$TMP_DIGEST_FILE"
@@ -317,21 +333,25 @@ To manually verify the harness adapter and transcript digest helper logic across
    - Provenance lines: harness version from `CLAUDE_CODE_VERSION`, model from `ANTHROPIC_MODEL` else the last `"model"` field of the transcript snapshot bytes, reasoning from `CLAUDE_EFFORT`. Unset sources degrade to `N/A` (version, reasoning) or `unavailable` (model).
    - From a linked worktree: the cwd-slug lookup misses, the `git rev-parse --git-common-dir` fallback resolves the primary repository root slug, and the digest still resolves. Outside any git repo, the fallback exception path degrades cleanly to `unavailable`.
 
-4. **Absent / Unreadable Transcript (any adapter):**
+4. **Codex CLI:**
+   `CODEX_SESSION_ID="<valid-id>" CODEX_HOME="/path/to/codex" ...`
+   - Output: `codex-cli` / session ID / 64-hex digest / byte count. Status set to `VERIFIED_BY_HUMAN`.
+
+5. **Absent / Unreadable Transcript (any adapter):**
    e.g. `ANTIGRAVITY_CONVERSATION_ID="nonexistent" ...`
    - Exit status: `0`
    - Output: harness ID / conversation ID / `unavailable` / `unavailable`. Status set to `VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST` (requires second user confirmation).
 
-5. **No Harness Detected:**
-   All adapter env vars unset -> Output: `unknown` / `unavailable` / `unavailable` / `unavailable` / `N/A` / `unavailable` / `N/A`. Downgraded status as in case 4.
+6. **No Harness Detected:**
+   All adapter env vars unset -> Output: `unknown` / `unavailable` / `unavailable` / `unavailable` / `N/A` / `unavailable` / `N/A`. Downgraded status as in case 5.
 
-6. **Helper / Runtime Failure:**
+7. **Helper / Runtime Failure:**
    Helper exits non-zero -> `exit 1` triggers immediate hard abort. No trailers or commits created.
 
-7. **Malformed Output:**
+8. **Malformed Output:**
    Digest fails `^[a-f0-9]{64}$` regex, byte count non-numeric, or any provenance field fails `^[A-Za-z0-9._:/-]+$` (empty output, truncated lines, mixed availability) -> `exit 1` triggers immediate hard abort.
 
-8. **`mktemp` Failure:**
+9. **`mktemp` Failure:**
    `mktemp` exits non-zero -> `{ echo ... >&2; exit 1; }` triggers immediate hard abort.
 
 ---
