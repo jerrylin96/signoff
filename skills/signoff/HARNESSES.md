@@ -20,7 +20,30 @@ Canonical protocol: [specs/gsa-core.md](specs/gsa-core.md).
    `VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST` status (second confirmation
    required).
 
+## Cross-Harness Test Matrix & Open Agent Skills
+
+The `init.py` zero-touch initializer installs `/signoff` as a committed repository skill. Git Signoff Attestation (GSA v1.0) is entirely protocol-neutral: the commit trailers, git notes mirror, and verification logic are implemented using standard library Python (stdlib) invoking the `git` CLI, requiring zero external dependencies.
+
+Repositories can vendor `/signoff` into one or both candidate locations using `--skill-target`:
+- `.claude/skills/signoff`: Canonical destination for Claude Code (web, CLI, desktop).
+- `.agents/skills/signoff`: Open-standard destination for Antigravity, ChatGPT Codex, Cursor, Gemini CLI, OpenCode, and Aider.
+
+When invoked with `--skill-target auto` (the default), `init.py` inspects the repository for signals (`.claude`, `CLAUDE.md`, `.agents`, `AGENTS.md`, `GEMINI.md`, `.cursor`) and automatically selects the appropriate destination. In interactive greenfield setups without existing markers, it prompts the user; in non-interactive greenfield setups, it defaults to both destinations. Explicit choices (`--skill-target claude`, `--skill-target agents`, `--skill-target both`) are unioned with existing installations so re-running `init.py` always updates all configured harnesses together without version drift.
+
+### Cross-Harness Compatibility Matrix
+
+| Harness | Skill Destination | Transcript Discovery | Zero-Dependency stdlib |
+|---|---|---|---|
+| **Claude Code** | `.claude/skills/signoff` | `CLAUDE_CODE_SESSION_ID` -> `~/.claude/projects/<slug>/<id>.jsonl` | Yes (standard library Python + git) |
+| **Antigravity** | `.agents/skills/signoff` | `ANTIGRAVITY_CONVERSATION_ID` -> `~/.gemini/antigravity-cli/brain/<cid>/...` | Yes (standard library Python + git) |
+| **ChatGPT Codex** | `.agents/skills/signoff` | `CODEX_SESSION_ID` -> `$CODEX_HOME/sessions/**/rollout-*-<id>.jsonl` | Yes (standard library Python + git) |
+| **Cursor** | `.agents/skills/signoff` | `SIGNOFF_TRANSCRIPT_FILE` generic override | Yes (standard library Python + git) |
+| **Gemini CLI** | `.agents/skills/signoff` | `SIGNOFF_TRANSCRIPT_FILE` generic override | Yes (standard library Python + git) |
+| **OpenCode** | `.agents/skills/signoff` | `SIGNOFF_TRANSCRIPT_FILE` generic override | Yes (standard library Python + git) |
+| **Aider** | `.agents/skills/signoff` | `SIGNOFF_TRANSCRIPT_FILE` generic override | Yes (standard library Python + git) |
+
 ## Antigravity CLI (native)
+
 
 In the [dotgemini](https://github.com/jerrylin96/dotgemini) Antigravity global
 config this skill is indexed natively in `AGENTS.md` and maps to `/signoff`;

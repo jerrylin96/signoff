@@ -221,6 +221,7 @@ def test_skill_source_ref_pin_consistency():
     import re
 
     repo_root = Path(__file__).parent.parent
+    assert init.SKILL_SOURCE_REF == "init-v4", f"Expected init-v4, got {init.SKILL_SOURCE_REF}"
     ref = init.SKILL_SOURCE_REF
 
     tag_wf = (repo_root / ".github" / "workflows" / "tag.yml").read_text(encoding="utf-8")

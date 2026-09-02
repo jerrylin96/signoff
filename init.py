@@ -299,7 +299,7 @@ SKILL_SOURCE_REPO = "https://github.com/jerrylin96/signoff"
 # script version instead of silently tracking the default branch. Pin tags
 # never move; bump this together with the install snippets (README,
 # verify/README.md, site/index.html) and tag.yml's PINS list.
-SKILL_SOURCE_REF = "init-v3"
+SKILL_SOURCE_REF = "init-v4"
 VENDOR_STAMP_FILENAME = "VENDORED-FROM"
 
 

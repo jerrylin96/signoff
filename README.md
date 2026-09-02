@@ -52,12 +52,12 @@ you'd notice drift outside them. That is exactly the part a human must own.
 Inside your repository root, run the zero-touch initializer (Python 3.10+ stdlib only — zero dependencies):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v3/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v4/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
 ```
 
 The script automatically:
 1. Detects your repo, branch, and stack (suggests science or general software profile).
-2. Vendors the `/signoff` skill into `.claude/skills/signoff/` — committed with your repo, it loads for every collaborator, in local and cloud Claude Code sessions alike, with nothing account-scoped to install.
+2. Vendors the `/signoff` skill into `.claude/skills/signoff/` and/or open-standard `.agents/skills/signoff` (auto-detected from repository markers, or explicitly chosen via `--skill-target {auto,claude,agents,both}`) — committed with your repo, it loads for every collaborator, across Claude Code, Antigravity, Codex, Cursor, and open-standard agents alike, with nothing account-scoped to install.
 3. Scaffolds `.github/workflows/signoff.yml` and `.signoff/profile.md`.
 4. Injects the **attested by humans** badge into your `README.md`.
 5. Automates GitHub Ruleset protection (via `gh` CLI or a 1-click settings link).
@@ -98,9 +98,9 @@ nothing account-scoped.
 
 | Where you work | One-time action |
 |---|---|
-| **Any repository (Zero-touch)** | `curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v3/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py` |
-| **Any repository (manual)** | Copy this repo's `skills/signoff/` folder to `<your-repo>/.claude/skills/signoff/` and commit. That's the whole install for Claude Code — CLI, desktop, and claude.ai web/cloud sessions. Update by re-copying (or re-running the initializer) on new releases. |
-| **Other harnesses (Antigravity, Codex, Goose, …)** | Same folder, different location: copy `skills/signoff/` into your harness's skill directory and set the transcript adapter env vars — full matrix in [HARNESSES.md](skills/signoff/HARNESSES.md). |
+| **Any repository (Zero-touch)** | `curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v4/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py` (use `--skill-target {auto,claude,agents,both}` to control destinations) |
+| **Any repository (manual)** | Copy this repo's `skills/signoff/` folder to `<your-repo>/.claude/skills/signoff/` (Claude Code) or `<your-repo>/.agents/skills/signoff/` (Antigravity, Codex, Cursor, etc.) and commit. Update by re-copying (or re-running the initializer) on new releases. |
+| **Other harnesses (Antigravity, Codex, Cursor, …)** | Same folder, standard open-skills location: copy `skills/signoff/` into `.agents/skills/signoff` (or `.claude/skills/signoff`) and set the transcript adapter env vars — full matrix in [HARNESSES.md](skills/signoff/HARNESSES.md). |
 
 ## Make it yours: changing what gets asked
 

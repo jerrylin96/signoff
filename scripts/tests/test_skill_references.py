@@ -675,4 +675,38 @@ def test_embedded_transcript_helper_parity(tmp_path):
     assert lines[3] == str(len(def_data))
 
 
+def test_cross_harness_matrix_coverage():
+    """Verify that HARNESSES.md contains the cross-harness test matrix
+    covering all required harnesses and destination channels."""
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    harnesses_path = os.path.join(root_dir, "skills", "signoff", "HARNESSES.md")
+    with open(harnesses_path, encoding="utf-8") as f:
+        content = f.read()
+
+    # Verify all harnesses in matrix
+    required_harnesses = [
+        "Claude Code",
+        "Antigravity",
+        "ChatGPT Codex",
+        "Cursor",
+        "Gemini CLI",
+        "OpenCode",
+        "Aider",
+    ]
+    for h in required_harnesses:
+        assert h in content, f"Missing harness {h} in HARNESSES.md"
+
+    # Verify both skill destinations
+    assert ".claude/skills/signoff" in content, "Missing .claude/skills/signoff in HARNESSES.md"
+    assert ".agents/skills/signoff" in content, "Missing .agents/skills/signoff in HARNESSES.md"
+
+    # Verify selector documentation
+    assert "--skill-target" in content, "Missing --skill-target documentation in HARNESSES.md"
+
+    # Verify zero-dependency guarantee
+    assert "standard library" in content.lower() or "stdlib" in content.lower(), (
+        "Missing zero external dependencies documentation in HARNESSES.md"
+    )
+
+
 
