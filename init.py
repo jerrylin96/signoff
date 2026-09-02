@@ -818,6 +818,7 @@ def _rollback_scaffold(
     preexisting: set[Path],
     preexisting_dirs: Optional[set[Path]] = None,
     preexisting_skill_dirs: Optional[dict[Path, list[Path]]] = None,
+    scaffold_started: bool = True,
 ) -> None:
     """Undo a partial init when a step after branch creation fails.
 
@@ -826,59 +827,67 @@ def _rollback_scaffold(
     files. This restores the repository to exactly the state init found it in:
     paths init created are removed, tracked files it overwrote (e.g. the README
     badge) are reverted to HEAD, and the original branch is restored with the
-    abandoned setup branch dropped. Local git state only — a GitHub ruleset
-    already created via `gh` is idempotent and left in place. Best-effort:
-    every step is guarded so rollback never masks the original error.
+    abandoned setup branch dropped.
+
+    When failure occurs before any scaffold mutations begin (scaffold_started=False),
+    pre-scaffolding failures require only branch cleanup: file removal/restoration
+    and directory pruning are skipped entirely so pre-existing untracked files and
+    empty directories are never disturbed.
+
+    Local git state only — a GitHub ruleset already created via `gh` is idempotent
+    and left in place. Best-effort: every step is guarded so rollback never masks
+    the original error.
     """
-    # 1. Undo file scaffolding.
-    for path in scaffold_paths:
-        if path in preexisting:
-            rel = path.relative_to(root).as_posix()
-            if any(path == root / cand for cand in SKILL_DEST_CANDIDATES):
-                # Pre-existing skill destination: completely remove the destination
-                # directory so newly written untracked files (e.g. VENDORED-FROM)
-                # and newly vendored ignored files are cleared, then restore tracked
-                # content from HEAD.
-                # Policy A's Step 0 validation and vendor_skill's defensive post-checkout
-                # re-check prevent a symlink destination from being vendored. If either
-                # Policy A validation changes, re-audit this removal order so rmtree never
-                # attempts to traverse or silently ignore a symlink.
-                if path.is_dir():
-                    shutil.rmtree(path, ignore_errors=True)
-                elif path.is_file() or path.is_symlink():
-                    path.unlink(missing_ok=True)
-                checkout_proc = subprocess.run(
-                    ["git", "checkout", "HEAD", "--", rel],
-                    cwd=root,
-                    capture_output=True,
-                    text=True,
-                )
-                if (
-                    checkout_proc.returncode == 0
-                    and preexisting_skill_dirs
-                    and path in preexisting_skill_dirs
-                ):
-                    for rel_dir in preexisting_skill_dirs[path]:
-                        (path / rel_dir).mkdir(parents=True, exist_ok=True)
+    if scaffold_started:
+        # 1. Undo file scaffolding.
+        for path in scaffold_paths:
+            if path in preexisting:
+                rel = path.relative_to(root).as_posix()
+                if any(path == root / cand for cand in SKILL_DEST_CANDIDATES):
+                    # Pre-existing skill destination: completely remove the destination
+                    # directory so newly written untracked files (e.g. VENDORED-FROM)
+                    # and newly vendored ignored files are cleared, then restore tracked
+                    # content from HEAD.
+                    # Policy A's Step 0 validation and vendor_skill's defensive post-checkout
+                    # re-check prevent a symlink destination from being vendored. If either
+                    # Policy A validation changes, re-audit this removal order so rmtree never
+                    # attempts to traverse or silently ignore a symlink.
+                    if path.is_dir():
+                        shutil.rmtree(path, ignore_errors=True)
+                    elif path.is_file() or path.is_symlink():
+                        path.unlink(missing_ok=True)
+                    checkout_proc = subprocess.run(
+                        ["git", "checkout", "HEAD", "--", rel],
+                        cwd=root,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if (
+                        checkout_proc.returncode == 0
+                        and preexisting_skill_dirs
+                        and path in preexisting_skill_dirs
+                    ):
+                        for rel_dir in preexisting_skill_dirs[path]:
+                            (path / rel_dir).mkdir(parents=True, exist_ok=True)
+                else:
+                    # Ordinary pre-existing files (e.g. README.md)
+                    subprocess.run(["git", "checkout", "HEAD", "--", rel], cwd=root, capture_output=True, text=True)
             else:
-                # Ordinary pre-existing files (e.g. README.md)
-                subprocess.run(["git", "checkout", "HEAD", "--", rel], cwd=root, capture_output=True, text=True)
-        else:
-            _remove_scaffold_path(path)
-    # 2. Prune directories init may have created, leaving user content intact.
-    for directory in (
-        root / ".github" / "workflows",
-        root / ".github",
-        root / ".signoff",
-        root / ".agents" / "skills" / "signoff",
-        root / ".agents" / "skills",
-        root / ".agents",
-        root / ".claude" / "skills" / "signoff",
-        root / ".claude" / "skills",
-        root / ".claude",
-    ):
-        if preexisting_dirs is None or directory not in preexisting_dirs:
-            _prune_empty_dir(directory)
+                _remove_scaffold_path(path)
+        # 2. Prune directories init may have created, leaving user content intact.
+        for directory in (
+            root / ".github" / "workflows",
+            root / ".github",
+            root / ".signoff",
+            root / ".agents" / "skills" / "signoff",
+            root / ".agents" / "skills",
+            root / ".agents",
+            root / ".claude" / "skills" / "signoff",
+            root / ".claude" / "skills",
+            root / ".claude",
+        ):
+            if preexisting_dirs is None or directory not in preexisting_dirs:
+                _prune_empty_dir(directory)
     # 3. Restore the starting branch and drop the abandoned setup branch.
     if is_unborn:
         # No commits exist, so there is no setup-branch ref to delete; just
@@ -971,6 +980,7 @@ def run_init(
     ]
     preexisting_dirs = {d for d in ancestor_candidates if d.is_dir()}
     preexisting_skill_dirs: dict[Path, list[Path]] = {}
+    scaffold_started = False
     try:
         preexisting_skill_dirs = {
             dest: [d.relative_to(dest) for d in sorted(dest.rglob("*")) if d.is_dir()]
@@ -993,6 +1003,7 @@ def run_init(
         print(f"  Active profile: {effective_profile}")
 
         # Step 4: Scaffold files
+        scaffold_started = True
         scaffold_workflow(root, default_branch=ctx.default_branch)
         scaffold_profile(root, profile_id=effective_profile)
         vendor_skill(root, source=skill_source, destinations=resolved_dests, allow_dirty=allow_dirty)
@@ -1027,6 +1038,7 @@ def run_init(
             preexisting,
             preexisting_dirs=preexisting_dirs,
             preexisting_skill_dirs=preexisting_skill_dirs,
+            scaffold_started=scaffold_started,
         )
         restored = ctx.current_branch or "the previous state"
         print(f"  ↩️  Rolled back partial setup; repository restored to '{restored}'.", file=sys.stderr)

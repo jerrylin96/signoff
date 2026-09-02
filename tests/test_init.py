@@ -1336,8 +1336,12 @@ def test_rollback_when_snapshotting_raises_permission_error(temp_git_repo):
     subprocess.run(["git", "add", ".claude/skills/signoff"], cwd=temp_git_repo, check=True)
     subprocess.run(["git", "commit", "-m", "Commit tracked skill"], cwd=temp_git_repo, check=True)
 
+    # Untracked empty directory inside pre-existing destination
+    (dest / "preexisting-empty").mkdir()
+
     orig_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=temp_git_repo, text=True).strip()
     before_snapshot = _dir_snapshot(dest)
+    assert "preexisting-empty" in before_snapshot
 
     orig_rglob = Path.rglob
 
@@ -1412,6 +1416,50 @@ def test_normalize_skill_destinations_rejects_relative_path(temp_git_repo):
         init._normalize_skill_destinations(temp_git_repo, [rel_path])
 
 
+def test_rollback_pre_scaffold_failure_preserves_destination_and_restores_branch(temp_git_repo):
+    """Failure before scaffolding begins (e.g. profile detection) skips scaffold rollback and restores branch."""
+    dest = temp_git_repo / ".claude" / "skills" / "signoff"
+    shutil.copytree(SKILL_SRC, dest)
+    subprocess.run(["git", "add", ".claude/skills/signoff"], cwd=temp_git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Commit tracked skill"], cwd=temp_git_repo, check=True)
 
+    # Add untracked empty subdirectory
+    (dest / "nested-empty").mkdir()
 
+    orig_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=temp_git_repo, text=True).strip()
+    before_snapshot = _dir_snapshot(dest)
+    assert "nested-empty" in before_snapshot
 
+    with patch.object(init, "detect_recommended_profile", side_effect=RuntimeError("sentinel profile error")):
+        with pytest.raises(RuntimeError, match="sentinel profile error"):
+            init.run_init(
+                repo_root=temp_git_repo,
+                skip_ruleset=True,
+                non_interactive=True,
+                skill_source=SKILL_SRC,
+                skill_target="claude",
+            )
+
+    curr_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=temp_git_repo, text=True).strip()
+    assert curr_branch == orig_branch
+
+    branches = subprocess.check_output(["git", "branch"], cwd=temp_git_repo, text=True)
+    assert "signoff/init" not in branches
+
+    # Destination snapshot, including untracked empty directory, is completely unchanged
+    assert _dir_snapshot(dest) == before_snapshot
+
+    # No scaffold files or directories created
+    assert not (temp_git_repo / ".github" / "workflows" / "signoff.yml").exists()
+    assert not (temp_git_repo / ".signoff" / "profile.md").exists()
+
+    # Scoped and repository-wide git status are clean
+    status_scoped = subprocess.check_output(
+        ["git", "status", "--porcelain", "--ignored", "--untracked-files=all", "--", ".claude/skills/signoff"],
+        cwd=temp_git_repo,
+        text=True,
+    )
+    assert status_scoped.strip() == ""
+
+    status_repo = subprocess.check_output(["git", "status", "--porcelain"], cwd=temp_git_repo, text=True)
+    assert status_repo.strip() == ""
