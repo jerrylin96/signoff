@@ -812,6 +812,7 @@ def _rollback_scaffold(
     scaffold_paths: list[Path],
     preexisting: set[Path],
     preexisting_dirs: Optional[set[Path]] = None,
+    preexisting_skill_dirs: Optional[dict[Path, list[Path]]] = None,
 ) -> None:
     """Undo a partial init when a step after branch creation fails.
 
@@ -838,6 +839,9 @@ def _rollback_scaffold(
                 elif path.is_file() or path.is_symlink():
                     path.unlink(missing_ok=True)
                 subprocess.run(["git", "checkout", "HEAD", "--", rel], cwd=root, capture_output=True, text=True)
+                if preexisting_skill_dirs and path in preexisting_skill_dirs:
+                    for rel_dir in preexisting_skill_dirs[path]:
+                        (path / rel_dir).mkdir(parents=True, exist_ok=True)
             else:
                 # Ordinary pre-existing files (e.g. README.md)
                 subprocess.run(["git", "checkout", "HEAD", "--", rel], cwd=root, capture_output=True, text=True)
@@ -948,6 +952,11 @@ def run_init(
         root / ".agents" / "skills" / "signoff",
     ]
     preexisting_dirs = {d for d in ancestor_candidates if d.is_dir()}
+    preexisting_skill_dirs: dict[Path, list[Path]] = {
+        dest: [d.relative_to(dest) for d in sorted(dest.rglob("*")) if d.is_dir()]
+        for dest in resolved_dests
+        if dest.is_dir()
+    }
     try:
         # Step 3: Profile selection
         rec_profile = detect_recommended_profile(root)
@@ -998,6 +1007,7 @@ def run_init(
             scaffold_paths,
             preexisting,
             preexisting_dirs=preexisting_dirs,
+            preexisting_skill_dirs=preexisting_skill_dirs,
         )
         restored = ctx.current_branch or "the previous state"
         print(f"  ↩️  Rolled back partial setup; repository restored to '{restored}'.", file=sys.stderr)

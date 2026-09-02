@@ -807,13 +807,12 @@ def test_cross_harness_matrix_coverage():
     with open(harnesses_path, encoding="utf-8") as f:
         content = f.read()
 
-    # Verify all harnesses in matrix (Aider dropped per v1.0 verified matrix)
+    # Verify all harnesses in matrix (Aider and deprecated Gemini CLI dropped)
     required_harnesses = [
         "Claude Code",
         "Antigravity",
         "ChatGPT Codex",
         "Cursor",
-        "Gemini CLI",
         "OpenCode",
     ]
     for h in required_harnesses:

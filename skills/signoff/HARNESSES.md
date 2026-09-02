@@ -26,7 +26,7 @@ The `init.py` zero-touch initializer installs `/signoff` as a committed reposito
 
 Repositories can vendor `/signoff` into one or both candidate locations using `--skill-target`:
 - `.claude/skills/signoff`: Canonical destination for Claude Code (web, CLI, desktop).
-- `.agents/skills/signoff`: Cross-client convention for Antigravity, ChatGPT Codex, Cursor, Gemini CLI, and OpenCode (the Agent Skills specification defines the skill format; `.agents/skills` is client convention and implementation guidance, not a normative location).
+- `.agents/skills/signoff`: Cross-client convention for Antigravity, ChatGPT Codex, Cursor, and OpenCode (the Agent Skills specification defines the skill format; `.agents/skills` is client convention and implementation guidance, not a normative location).
 
 When invoked with `--skill-target auto` (the default), `init.py` inspects the repository for signals (`.claude`, `CLAUDE.md`, `.agents`, `AGENTS.md`, `GEMINI.md`, `.cursor`) and automatically selects the appropriate destination. In interactive greenfield setups without existing markers, it prompts the user; in non-interactive greenfield setups, it defaults to both destinations. Explicit choices (`--skill-target claude`, `--skill-target agents`, `--skill-target both`) are unioned with existing installations so re-running `init.py` always updates all configured harnesses together without version drift. A recognized existing install (a candidate path whose target contains `SKILL.md`, symlink or not) is always unioned into the destination set and cannot be excluded by any `--skill-target` value; a symlinked one is then refused by Policy A and must be replaced with a real copy first. A broken symlink is not recognized and is not unioned.
 
@@ -40,8 +40,7 @@ Re-running the initializer requires a clean working tree apart from the scaffold
 | **Antigravity** | `.agents/skills/signoff` | `/signoff` | `ANTIGRAVITY_CONVERSATION_ID` -> `~/.gemini/antigravity-cli/brain/<cid>/...` | Yes (standard library Python + git) |
 | **ChatGPT Codex** | `.agents/skills/signoff` | `$signoff` | `CODEX_SESSION_ID` -> `$CODEX_HOME/sessions/**/rollout-*-<id>.jsonl` | Yes (standard library Python + git) |
 | **Cursor** | `.agents/skills/signoff` | `/signoff` (or auto) | `SIGNOFF_TRANSCRIPT_FILE` generic override | Yes (standard library Python + git) |
-| **Gemini CLI** | `.agents/skills/signoff` | `/signoff` | `SIGNOFF_TRANSCRIPT_FILE` generic override | Yes (standard library Python + git) |
-| **OpenCode** | `.agents/skills/signoff` | `/signoff` | `SIGNOFF_TRANSCRIPT_FILE` generic override | Yes (standard library Python + git) |
+| **OpenCode** | `.agents/skills/signoff` | Automatic / tool-selected (native skill tool) | `SIGNOFF_TRANSCRIPT_FILE` generic override | Yes (standard library Python + git) |
 
 ## Antigravity CLI (native)
 

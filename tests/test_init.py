@@ -1198,14 +1198,19 @@ def test_rollback_preserves_preexisting_empty_ancestor_dirs_agents_to_claude(tem
 
 
 def test_rollback_preexisting_skill_destination_unstamped_install(temp_git_repo):
-    """Commit an unstamped install, force failure after vendor_skill(), verify pristine restore."""
+    """Commit an unstamped install, force failure after vendor_skill(), verify pristine restore including empty dirs."""
     dest = temp_git_repo / ".claude" / "skills" / "signoff"
     shutil.copytree(SKILL_SRC, dest)
     (dest / init.VENDOR_STAMP_FILENAME).unlink(missing_ok=True)
     subprocess.run(["git", "add", ".claude/skills/signoff"], cwd=temp_git_repo, check=True)
     subprocess.run(["git", "commit", "-m", "Commit unstamped skill"], cwd=temp_git_repo, check=True)
 
+    # Add empty nested directory inside dest (invisible to git, but pre-existing on disk)
+    nested_empty = dest / "nested" / "local-empty"
+    nested_empty.mkdir(parents=True)
+
     before_snapshot = _dir_snapshot(dest)
+    assert "nested/local-empty" in before_snapshot
 
     with patch.object(init, "stage_signoff_files", side_effect=RuntimeError("forced failure after vendoring")):
         with pytest.raises(RuntimeError, match="forced failure after vendoring"):
@@ -1219,6 +1224,7 @@ def test_rollback_preexisting_skill_destination_unstamped_install(temp_git_repo)
 
     after_snapshot = _dir_snapshot(dest)
     assert after_snapshot == before_snapshot
+    assert nested_empty.is_dir()
     status = subprocess.check_output(
         ["git", "status", "--porcelain", "--ignored", "--untracked-files=all", "--", ".claude/skills/signoff"],
         cwd=temp_git_repo,
@@ -1241,7 +1247,11 @@ def test_rollback_preexisting_skill_destination_ignored_files(temp_git_repo, tmp
     subprocess.run(["git", "add", ".claude/skills/signoff", ".gitignore"], cwd=temp_git_repo, check=True)
     subprocess.run(["git", "commit", "-m", "Commit prior install and gitignore"], cwd=temp_git_repo, check=True)
 
+    empty_sub = dest / "empty_dir"
+    empty_sub.mkdir()
+
     before_snapshot = _dir_snapshot(dest)
+    assert "empty_dir" in before_snapshot
 
     with patch.object(init, "stage_signoff_files", side_effect=RuntimeError("forced failure after vendoring")):
         with pytest.raises(RuntimeError, match="forced failure after vendoring"):
@@ -1255,6 +1265,7 @@ def test_rollback_preexisting_skill_destination_ignored_files(temp_git_repo, tmp
 
     after_snapshot = _dir_snapshot(dest)
     assert after_snapshot == before_snapshot
+    assert empty_sub.is_dir()
     status = subprocess.check_output(
         ["git", "status", "--porcelain", "--ignored", "--untracked-files=all", "--", ".claude/skills/signoff"],
         cwd=temp_git_repo,

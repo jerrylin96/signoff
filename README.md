@@ -57,7 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v4/init.py 
 
 The script automatically:
 1. Detects your repo, branch, and stack (suggests science or general software profile).
-2. Vendors the `/signoff` skill into `.claude/skills/signoff/` and/or open-standard `.agents/skills/signoff` (auto-detected from repository markers, or explicitly chosen via `--skill-target {auto,claude,agents,both}`) — committed with your repo, it loads for every collaborator, across Claude Code, Antigravity, Codex, Cursor, and open-standard agents alike, with nothing account-scoped to install.
+2. Vendors the `/signoff` skill into `.claude/skills/signoff/` and/or `.agents/skills/signoff` (cross-client convention, auto-detected from repository markers, or explicitly chosen via `--skill-target {auto,claude,agents,both}`) — committed with your repo, it loads for every collaborator, across Claude Code, Antigravity, Codex, Cursor, and other agent harnesses alike, with nothing account-scoped to install.
 3. Scaffolds `.github/workflows/signoff.yml` and `.signoff/profile.md`.
 4. Injects the **attested by humans** badge into your `README.md`.
 5. Automates GitHub Ruleset protection (via `gh` CLI or a 1-click settings link).
