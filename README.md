@@ -250,10 +250,8 @@ pytest
 Contract tests live in `scripts/tests/` (skill contracts), `tests/` (repo
 initializer), and `signoff_mcp/tests/` (server mechanics).
 
-## Provenance
+## License
 
-Extracted from [jerrylin96/dotgemini](https://github.com/jerrylin96/dotgemini)
-with full history via `git filter-repo`; dotgemini now consumes this repo via
-`git subtree`. Code is MIT licensed; the GSA specifications are licensed
-under the [Community Specification License 1.0](LICENSE-SPEC), so anyone can
-implement, verify, or extend the protocol.
+Code is MIT licensed; the GSA specifications are licensed under the
+[Community Specification License 1.0](LICENSE-SPEC), so anyone can implement,
+verify, or extend the protocol.
