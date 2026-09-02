@@ -408,6 +408,11 @@ def _normalize_skill_destinations(
     repo_root: Path,
     destinations: Optional[list[Path]] = None,
 ) -> list[Path]:
+    """Normalize and validate skill destination paths against candidate set.
+
+    Contract: destinations must be absolute candidate paths rooted at repo_root.
+    Never resolves symlinks (lexical comparison only) so symlink targets are not followed.
+    """
     if destinations is None:
         return [repo_root / ".claude" / "skills" / "signoff"]
     if not destinations:
@@ -419,7 +424,7 @@ def _normalize_skill_destinations(
         d_path = Path(d)
         for rel in SKILL_DEST_CANDIDATES:
             cand_path = repo_root / rel
-            if d_path == cand_path or d_path.as_posix() == cand_path.as_posix():
+            if d_path == cand_path:
                 matched_rel = rel
                 break
             try:
@@ -834,12 +839,25 @@ def _rollback_scaffold(
                 # directory so newly written untracked files (e.g. VENDORED-FROM)
                 # and newly vendored ignored files are cleared, then restore tracked
                 # content from HEAD.
+                # Policy A's Step 0 validation and vendor_skill's defensive post-checkout
+                # re-check prevent a symlink destination from being vendored. If either
+                # Policy A validation changes, re-audit this removal order so rmtree never
+                # attempts to traverse or silently ignore a symlink.
                 if path.is_dir():
                     shutil.rmtree(path, ignore_errors=True)
                 elif path.is_file() or path.is_symlink():
                     path.unlink(missing_ok=True)
-                subprocess.run(["git", "checkout", "HEAD", "--", rel], cwd=root, capture_output=True, text=True)
-                if preexisting_skill_dirs and path in preexisting_skill_dirs:
+                checkout_proc = subprocess.run(
+                    ["git", "checkout", "HEAD", "--", rel],
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                )
+                if (
+                    checkout_proc.returncode == 0
+                    and preexisting_skill_dirs
+                    and path in preexisting_skill_dirs
+                ):
                     for rel_dir in preexisting_skill_dirs[path]:
                         (path / rel_dir).mkdir(parents=True, exist_ok=True)
             else:
@@ -952,12 +970,13 @@ def run_init(
         root / ".agents" / "skills" / "signoff",
     ]
     preexisting_dirs = {d for d in ancestor_candidates if d.is_dir()}
-    preexisting_skill_dirs: dict[Path, list[Path]] = {
-        dest: [d.relative_to(dest) for d in sorted(dest.rglob("*")) if d.is_dir()]
-        for dest in resolved_dests
-        if dest.is_dir()
-    }
+    preexisting_skill_dirs: dict[Path, list[Path]] = {}
     try:
+        preexisting_skill_dirs = {
+            dest: [d.relative_to(dest) for d in sorted(dest.rglob("*")) if d.is_dir()]
+            for dest in resolved_dests
+            if dest.is_dir()
+        }
         # Step 3: Profile selection
         rec_profile = detect_recommended_profile(root)
         effective_profile = profile_id or rec_profile

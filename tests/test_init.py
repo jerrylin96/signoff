@@ -1329,6 +1329,89 @@ def test_vendor_skill_clones_pinned_ref_multi_destination_single_clone(temp_git_
         assert f"source: {init.SKILL_SOURCE_REPO}" in stamp
 
 
+def test_rollback_when_snapshotting_raises_permission_error(temp_git_repo):
+    """If preexisting_skill_dirs snapshot raises PermissionError, rollback cleans up setup branch."""
+    dest = temp_git_repo / ".claude" / "skills" / "signoff"
+    shutil.copytree(SKILL_SRC, dest)
+    subprocess.run(["git", "add", ".claude/skills/signoff"], cwd=temp_git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Commit tracked skill"], cwd=temp_git_repo, check=True)
+
+    orig_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=temp_git_repo, text=True).strip()
+    before_snapshot = _dir_snapshot(dest)
+
+    orig_rglob = Path.rglob
+
+    def guarded_rglob(self, pattern, *args, **kwargs):
+        if ".claude" in self.parts and "signoff" in self.parts:
+            raise PermissionError("Simulated permission error scanning directory")
+        return orig_rglob(self, pattern, *args, **kwargs)
+
+    with patch.object(Path, "rglob", side_effect=guarded_rglob, autospec=True):
+        with pytest.raises(PermissionError, match="Simulated permission error scanning directory"):
+            init.run_init(
+                repo_root=temp_git_repo,
+                skip_ruleset=True,
+                non_interactive=True,
+                skill_source=SKILL_SRC,
+                skill_target="claude",
+            )
+
+    curr_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=temp_git_repo, text=True).strip()
+    assert curr_branch == orig_branch
+
+    branches = subprocess.check_output(["git", "branch"], cwd=temp_git_repo, text=True)
+    assert "signoff/init" not in branches
+
+    status = subprocess.check_output(["git", "status", "--porcelain"], cwd=temp_git_repo, text=True)
+    assert status.strip() == ""
+    assert _dir_snapshot(dest) == before_snapshot
+
+
+def test_rollback_allow_dirty_untracked_destination_leaves_no_empty_skeleton(temp_git_repo):
+    """Untracked destination with nested dirs under --allow-dirty leaves no empty skeleton when rollback checkout fails."""
+    dest = temp_git_repo / ".claude" / "skills" / "signoff"
+    dest.mkdir(parents=True)
+    (dest / "SKILL.md").write_text("# untracked skill\n", encoding="utf-8")
+    (dest / "specs").mkdir()
+    (dest / "specs" / "gsa-core.md").write_text("# spec\n", encoding="utf-8")
+    (dest / "profiles").mkdir()
+    (dest / "profiles" / "custom.md").write_text("# profile\n", encoding="utf-8")
+
+    orig_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=temp_git_repo, text=True).strip()
+
+    with patch.object(init, "stage_signoff_files", side_effect=RuntimeError("forced failure after vendoring")):
+        with pytest.raises(RuntimeError, match="forced failure after vendoring"):
+            init.run_init(
+                repo_root=temp_git_repo,
+                skip_ruleset=True,
+                non_interactive=True,
+                skill_source=SKILL_SRC,
+                skill_target="claude",
+                allow_dirty=True,
+            )
+
+    curr_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=temp_git_repo, text=True).strip()
+    assert curr_branch == orig_branch
+
+    branches = subprocess.check_output(["git", "branch"], cwd=temp_git_repo, text=True)
+    assert "signoff/init" not in branches
+
+    assert not dest.exists()
+    status = subprocess.check_output(
+        ["git", "status", "--porcelain", "--ignored", "--untracked-files=all", "--", ".claude/skills/signoff"],
+        cwd=temp_git_repo,
+        text=True,
+    )
+    assert status.strip() == ""
+
+
+def test_normalize_skill_destinations_rejects_relative_path(temp_git_repo):
+    """_normalize_skill_destinations enforces that destinations are absolute candidate paths rooted at repo_root."""
+    rel_path = Path(".claude/skills/signoff")
+    with pytest.raises(ValueError, match="is not a valid candidate within"):
+        init._normalize_skill_destinations(temp_git_repo, [rel_path])
+
+
 
 
 
