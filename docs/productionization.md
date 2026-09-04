@@ -265,7 +265,7 @@ Recorded so they never need re-derivation; each names its future fix.
   time*, regardless of which pinned `init.py` tag the user downloaded, and
   the vendored folder carried no version marker. Fixed as prescribed, in
   one move: the clone now happens at the pinned tag `SKILL_SOURCE_REF`
-  (`init-v3`, served by the install snippets and created by tag.yml's PINS
+  (`init-v4`, served by the install snippets and created by tag.yml's PINS
   list — `test_skill_source_ref_pin_consistency` fails if the three ever
   drift), and every vendored copy carries a `VENDORED-FROM` stamp (source,
   ref, commit; `ref: local` for `--skill-source` installs) — self-describing
@@ -302,11 +302,23 @@ Recorded so they never need re-derivation; each names its future fix.
   and neighbors pin it). Rollback restores local git state only; a GitHub
   ruleset already created via `gh` is idempotent and left in place.
   `--skill-source <path>` remains the intended offline path (HPC clusters).
-- **Symlinked destinations abort loudly.** Re-running the initializer over
-  a user-made `.claude/skills/signoff` symlink fails with a raw `OSError`
-  (`rmtree` refuses symlinks); nothing is deleted through the link. Outside
-  repos should commit real copies — the symlink is this repo's dogfood
-  pattern only. A friendlier message is future polish, not a safety gap.
+- **Policy A fail-fast validation.** Pre-flight validation (`validate_policy_a`)
+  safeguards destination directories before any branch is created. Symlinks at
+  the destination or in any parent path component, ordinary-file collisions,
+  git-ignored destinations, pre-existing ignored untracked descendants, and
+  unrelated non-empty directories are refused with actionable diagnostic messages.
+  Outside repos should commit real copies — dogfood symlinks at
+  `.claude/skills/signoff` and `.agents/skills/signoff` are this repository's
+  internal pattern only. `--allow-dirty` is intentionally narrow: it permits
+  unrelated unstaged/untracked work, but refuses pre-staged changes and any
+  uncommitted or ignored state under managed scaffold paths. The guard runs
+  before branch creation, and a second staged-path check runs immediately before
+  the scaffold commit, preventing user work from being overwritten or committed.
+  Rollback is best-effort and preserves the original exception, but every failed
+  filesystem/Git recovery operation is now collected and reported; the initializer
+  only claims local Git state was restored when no rollback failure was observed.
+  If GitHub ruleset creation succeeded before a later local failure, the runtime
+  explicitly warns that the remote ruleset remains configured.
 - **Old-channel installs are orphaned.** Accounts that installed the
   retired plugin or zip skill stop receiving anything and are not notified;
   accepted as a pre-production breaking change (the maintainer removed

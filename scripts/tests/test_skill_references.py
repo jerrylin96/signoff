@@ -8,8 +8,11 @@ rules; everything else must resolve to a valid in-repo skill.
 """
 
 import glob
+import hashlib
 import os
 import re
+import subprocess
+import sys
 
 # External skills referenced by signoff that degrade gracefully when absent
 # (HARNESSES.md, Portability Rules #3).
@@ -137,14 +140,14 @@ def test_no_non_portable_file_links():
 
 def test_repo_dogfoods_project_skill():
     """This repo ships the per-repo channel it documents: .claude/skills/signoff
-    resolves (via symlink) to the canonical skills/signoff folder."""
+    and .agents/skills/signoff resolve (via symlink) to the canonical skills/signoff folder."""
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    vendored = os.path.join(root_dir, ".claude", "skills", "signoff")
-    assert os.path.isdir(vendored), ".claude/skills/signoff missing"
-    assert os.path.isfile(os.path.join(vendored, "SKILL.md"))
-    assert os.path.realpath(vendored) == os.path.realpath(
-        os.path.join(root_dir, "skills", "signoff")
-    ), ".claude/skills/signoff must resolve to skills/signoff"
+    canonical = os.path.realpath(os.path.join(root_dir, "skills", "signoff"))
+    for rel in [".claude/skills/signoff", ".agents/skills/signoff"]:
+        vendored = os.path.join(root_dir, *rel.split("/"))
+        assert os.path.isdir(vendored), f"{rel} missing"
+        assert os.path.isfile(os.path.join(vendored, "SKILL.md")), f"{rel}/SKILL.md missing"
+        assert os.path.realpath(vendored) == canonical, f"{rel} must resolve to skills/signoff"
 
 
 def test_skill_folder_is_self_contained():
@@ -258,6 +261,7 @@ def test_signoff_gsa_protocol_spec_and_trailers():
         "SIGNOFF_TRANSCRIPT_FILE",
         "ANTIGRAVITY_CONVERSATION_ID",
         "CLAUDE_CODE_SESSION_ID",
+        "CODEX_SESSION_ID",
     ]:
         assert adapter_env in signoff_content, f"Missing '{adapter_env}' adapter resolution in skills/signoff/SKILL.md"
 
@@ -518,3 +522,311 @@ def test_signoff_phase3f_adaptive_intensity_contract():
     assert "adaptive default auto-selects intensity" in site_content.lower(), "Missing adaptive default in site/index.html"
 
 
+def test_embedded_transcript_helper_parity(tmp_path):
+    """Verify Step 3 Python helper extracted from skills/signoff/SKILL.md."""
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    signoff_md = os.path.join(root_dir, "skills", "signoff", "SKILL.md")
+    with open(signoff_md, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    m = re.search(r"python3 - <<'PY' > \"\$TMP_DIGEST_FILE\"\n(.*?)\n\s*PY\n", content, re.DOTALL)
+    assert m, "Could not find python heredoc in skills/signoff/SKILL.md"
+    import textwrap
+    script = textwrap.dedent(m.group(1))
+
+    clean_env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": str(tmp_path / "home"),
+    }
+
+    # Case 1: No harness detected -> unknown, 7 lines, unavailable
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=clean_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "unknown"
+    assert lines[1] == "unavailable"
+    assert lines[2] == "unavailable"
+    assert lines[3] == "unavailable"
+
+    # Case 2: Codex session ID set, rollout present
+    codex_home = tmp_path / "codex_home"
+    sess_dir = codex_home / "sessions" / "2026" / "09" / "02"
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    test_data = b"line1\nline2\n"
+    (sess_dir / "rollout-2026-09-02T12-00-00-test-codex-sid.jsonl").write_bytes(test_data)
+
+    codex_env = dict(clean_env)
+    codex_env["CODEX_SESSION_ID"] = "test-codex-sid"
+    codex_env["CODEX_HOME"] = str(codex_home)
+
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=codex_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "codex-cli"
+    assert lines[1] == "test-codex-sid"
+    assert lines[2] == hashlib.sha256(test_data).hexdigest()
+    assert lines[3] == str(len(test_data))
+
+    # Case 3: Codex session ID set, rollout missing -> unavailable digest
+    missing_env = dict(clean_env)
+    missing_env["CODEX_SESSION_ID"] = "missing-codex-sid"
+    missing_env["CODEX_HOME"] = str(codex_home)
+
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=missing_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "codex-cli"
+    assert lines[1] == "missing-codex-sid"
+    assert lines[2] == "unavailable"
+    assert lines[3] == "unavailable"
+
+    # Case 4: Codex session ID with metacharacters
+    meta_env = dict(clean_env)
+    meta_env["CODEX_SESSION_ID"] = "meta[123]"
+    meta_env["CODEX_HOME"] = str(codex_home)
+    meta_data = b"meta-content\n"
+    (sess_dir / "rollout-2026-09-02T12-00-00-meta[123].jsonl").write_bytes(meta_data)
+    (sess_dir / "rollout-2026-09-02T12-00-00-meta1.jsonl").write_bytes(b"glob-content\n")
+
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=meta_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "codex-cli"
+    assert lines[1] == "meta[123]"
+    assert lines[2] == hashlib.sha256(meta_data).hexdigest()
+    assert lines[3] == str(len(meta_data))
+
+    # Case 5: Deterministic (mtime, path) tie-breaking on equal timestamps
+    tie_env = dict(clean_env)
+    tie_env["CODEX_SESSION_ID"] = "tie-sid"
+    tie_env["CODEX_HOME"] = str(codex_home)
+    f_a = sess_dir / "rollout-2026-09-02T12-00-00-a-tie-sid.jsonl"
+    f_b = sess_dir / "rollout-2026-09-02T12-00-00-b-tie-sid.jsonl"
+    f_a.write_bytes(b"content-a\n")
+    f_b.write_bytes(b"content-b\n")
+    os.utime(f_a, (100, 100))
+    os.utime(f_b, (100, 100))
+
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=tie_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "codex-cli"
+    assert lines[1] == "tie-sid"
+    assert lines[2] == hashlib.sha256(b"content-b\n").hexdigest()
+    assert lines[3] == str(len(b"content-b\n"))
+
+    # Case 6: Default CODEX_HOME (~/.codex/sessions) fallback when CODEX_HOME is unset
+    default_home = tmp_path / "home"
+    default_sess_dir = default_home / ".codex" / "sessions" / "2026" / "09" / "02"
+    default_sess_dir.mkdir(parents=True, exist_ok=True)
+    def_data = b"default-home-data\n"
+    (default_sess_dir / "rollout-2026-09-02T12-00-00-def-sid.jsonl").write_bytes(def_data)
+    def_env = dict(clean_env)
+    def_env["CODEX_SESSION_ID"] = "def-sid"
+
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=def_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "codex-cli"
+    assert lines[1] == "def-sid"
+    assert lines[2] == hashlib.sha256(def_data).hexdigest()
+    assert lines[3] == str(len(def_data))
+
+    # Case 7: Full precedence hierarchy
+    # 7.1: All four env vars set -> generic-file
+    all_override = tmp_path / "all_override.log"
+    all_override.write_bytes(b"all-override-data\n")
+    all_env = dict(clean_env)
+    all_env["SIGNOFF_TRANSCRIPT_FILE"] = str(all_override)
+    all_env["ANTIGRAVITY_CONVERSATION_ID"] = "ag-id"
+    all_env["CLAUDE_CODE_SESSION_ID"] = "cc-id"
+    all_env["CODEX_SESSION_ID"] = "codex-id"
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=all_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "generic-file"
+    assert lines[2] == hashlib.sha256(b"all-override-data\n").hexdigest()
+
+    # 7.2: Antigravity + Claude + Codex -> antigravity-cli
+    ag_cc_cx_env = dict(clean_env)
+    ag_cc_cx_env["ANTIGRAVITY_CONVERSATION_ID"] = "ag-id"
+    ag_cc_cx_env["CLAUDE_CODE_SESSION_ID"] = "cc-id"
+    ag_cc_cx_env["CODEX_SESSION_ID"] = "codex-id"
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=ag_cc_cx_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "antigravity-cli"
+    assert lines[1] == "ag-id"
+
+    # 7.3: Claude + Codex -> claude-code
+    cc_cx_env = dict(clean_env)
+    cc_cx_env["CLAUDE_CODE_SESSION_ID"] = "cc-id"
+    cc_cx_env["CODEX_SESSION_ID"] = "codex-id"
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=cc_cx_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "claude-code"
+    assert lines[1] == "cc-id"
+
+    # Case 8: Similar-suffix rejection for Codex
+    similar_home = tmp_path / "similar_home"
+    similar_sess = similar_home / ".codex" / "sessions" / "2026" / "09" / "02"
+    similar_sess.mkdir(parents=True, exist_ok=True)
+    (similar_sess / "rollout-2026-09-02T12-00-00-target-sid-extra.jsonl").write_bytes(b"extra\n")
+    (similar_sess / "2026-09-02T12-00-00-target-sid.jsonl").write_bytes(b"noprefix\n")
+    similar_env = dict(clean_env)
+    similar_env["CODEX_SESSION_ID"] = "target-sid"
+    similar_env["CODEX_HOME"] = str(similar_home / ".codex")
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=similar_env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0
+    lines = proc.stdout.splitlines()
+    assert len(lines) == 7
+    assert lines[0] == "codex-cli"
+    assert lines[1] == "target-sid"
+    assert lines[2] == "unavailable"
+    assert lines[3] == "unavailable"
+
+    # Case 9: Shell derivation verification from SKILL.md Step 4
+    with open(signoff_md, encoding="utf-8") as f:
+        skill_content = f.read()
+
+    section_match = re.search(
+        r"4\.\s+\*\*Construct Flat Git Trailers & Determine Status:\*\*.*?```bash\n(.*?)\n\s*fi",
+        skill_content,
+        re.DOTALL,
+    )
+    assert section_match, "Failed to extract shell derivation bash snippet from SKILL.md"
+    shell_snippet = section_match.group(1) + "\nfi"
+
+    # 9.1: Digest unavailable -> VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST
+    test_sh_1 = f"""
+    DIGEST_STATUS=0
+    DIGEST="unavailable"
+    T_BYTES="unavailable"
+    AGENT_HVER="N/A"
+    AGENT_MODEL="N/A"
+    AGENT_REASONING="N/A"
+    {shell_snippet}
+    echo "$STATUS"
+    """
+    proc = subprocess.run(["bash", "-c", test_sh_1], capture_output=True, text=True)
+    assert proc.returncode == 0, f"Shell derivation failed: {proc.stderr}"
+    assert proc.stdout.strip() == "VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST"
+
+    # 9.2: Valid 64-hex digest + byte count -> VERIFIED_BY_HUMAN
+    valid_hex = "a" * 64
+    test_sh_2 = f"""
+    DIGEST_STATUS=0
+    DIGEST="{valid_hex}"
+    T_BYTES="4096"
+    AGENT_HVER="N/A"
+    AGENT_MODEL="N/A"
+    AGENT_REASONING="N/A"
+    {shell_snippet}
+    echo "$STATUS"
+    """
+    proc = subprocess.run(["bash", "-c", test_sh_2], capture_output=True, text=True)
+    assert proc.returncode == 0, f"Shell derivation failed: {proc.stderr}"
+    assert proc.stdout.strip() == "VERIFIED_BY_HUMAN"
+
+
+def test_cross_harness_matrix_coverage():
+    """Verify that HARNESSES.md contains the cross-harness test matrix
+    covering all required harnesses and destination channels."""
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    harnesses_path = os.path.join(root_dir, "skills", "signoff", "HARNESSES.md")
+    with open(harnesses_path, encoding="utf-8") as f:
+        content = f.read()
+
+    # Verify all harnesses in matrix (Legacy/deprecated Gemini CLI excluded;
+    # Antigravity CLI is the supported Gemini-based harness)
+    required_harnesses = [
+        "Claude Code",
+        "Antigravity CLI",
+        "Codex CLI",
+        "Cursor",
+        "OpenCode",
+    ]
+    for h in required_harnesses:
+        assert h in content, f"Missing harness {h} in HARNESSES.md"
+
+    # Verify both skill destinations
+    assert ".claude/skills/signoff" in content, "Missing .claude/skills/signoff in HARNESSES.md"
+    assert ".agents/skills/signoff" in content, "Missing .agents/skills/signoff in HARNESSES.md"
+
+    # Verify selector documentation
+    assert "--skill-target" in content, "Missing --skill-target documentation in HARNESSES.md"
+
+    # Verify zero-dependency guarantee
+    assert "standard library" in content.lower() or "stdlib" in content.lower(), (
+        "Missing zero external dependencies documentation in HARNESSES.md"
+    )

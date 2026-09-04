@@ -389,9 +389,11 @@ and risk attestation</span>
         <div class="row">
           <h3>Any repository — zero-touch</h3>
           <p class="note">The initializer vendors the skill into
-          <code class="inline">.claude/skills/signoff/</code>, scaffolds the CI
+          <code class="inline">.claude/skills/signoff/</code> or
+          <code class="inline">.agents/skills/signoff</code> (use
+          <code class="inline">--skill-target {auto,claude,agents,both}</code> to control destinations), scaffolds the CI
           gate and interview profile, and opens a ready-to-merge branch.</p>
-          <pre class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v3/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py</code></pre>
+          <pre class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v4/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py</code></pre>
         </div>
         <div class="row">
           <h3>Any repository — manual</h3>

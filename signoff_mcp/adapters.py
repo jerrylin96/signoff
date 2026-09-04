@@ -146,12 +146,13 @@ class CodexAdapter:
         return self.session_id
 
     def fetch_transcript_bytes(self) -> bytes | None:
-        pattern = os.path.join(glob.escape(self.sessions_dir), "**", f"*{self.session_id}.jsonl")
+        escaped_sid = glob.escape(self.session_id)
+        pattern = os.path.join(glob.escape(self.sessions_dir), "**", f"rollout-*-{escaped_sid}.jsonl")
         try:
             matches = glob.glob(pattern, recursive=True)
             if not matches:
                 return None
-            newest = max(matches, key=os.path.getmtime)
+            newest = max(matches, key=lambda p: (os.path.getmtime(p), p))
         except OSError:
             return None
         return _read_bytes(newest)

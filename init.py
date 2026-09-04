@@ -15,9 +15,14 @@ import sys
 import tempfile
 import time
 import webbrowser
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+SKILL_DEST_CANDIDATES: tuple[str, ...] = (
+    ".claude/skills/signoff",
+    ".agents/skills/signoff",
+)
 
 PROFILES: dict[str, str] = {
     "domain-science": """<!-- INTERVIEW-PROFILE:BEGIN (sole customization point — replace only this block) -->
@@ -148,6 +153,7 @@ class InitResult:
     branch: str
     ruleset: RulesetResult
     pr_url: Optional[str] = None
+    destinations: list[Path] = field(default_factory=list)
 
 
 def is_valid_slug(slug: str) -> bool:
@@ -293,7 +299,7 @@ SKILL_SOURCE_REPO = "https://github.com/jerrylin96/signoff"
 # script version instead of silently tracking the default branch. Pin tags
 # never move; bump this together with the install snippets (README,
 # verify/README.md, site/index.html) and tag.yml's PINS list.
-SKILL_SOURCE_REF = "init-v3"
+SKILL_SOURCE_REF = "init-v4"
 VENDOR_STAMP_FILENAME = "VENDORED-FROM"
 
 
@@ -306,38 +312,241 @@ def _git_head_commit(git_dir: Path) -> str:
     return proc.stdout.strip() if proc.returncode == 0 else "unknown"
 
 
-def vendor_skill(repo_root: Path, source: Optional[Path] = None) -> Path:
-    """Copy the self-contained skills/signoff folder into <repo>/.claude/skills/signoff.
+def _existing_skill_installs(repo_root: Path) -> list[Path]:
+    """Return existing skill directories containing SKILL.md (following symlinks)."""
+    return [
+        repo_root / rel
+        for rel in SKILL_DEST_CANDIDATES
+        if (repo_root / rel / "SKILL.md").is_file()
+    ]
 
-    The vendored folder is the sole distribution channel: committed to the
-    repository, it loads for every collaborator in local and cloud Claude Code
-    sessions, with nothing account-scoped to install. Re-running replaces the
-    copy, which is how the skill is updated.
 
-    The default source is a shallow clone of the signoff repository at the
-    pinned tag SKILL_SOURCE_REF. Every vendored copy carries a VENDORED-FROM
-    stamp recording the source, ref, and commit, so a vendored folder is
-    self-describing about which skill version it holds.
-
-    source: local directory holding the skill folder (offline installs, tests).
+def detect_skill_destinations(repo_root: Path) -> list[Path] | None:
+    """Detect destination paths based on existing installations or repository signals.
+    Returns None if the repository has no unambiguous signals (Tier 3).
     """
-    dest = repo_root / ".claude" / "skills" / "signoff"
+    claude_dest = repo_root / ".claude" / "skills" / "signoff"
+    agents_dest = repo_root / ".agents" / "skills" / "signoff"
+
+    # Tier 1: Existing Installation Detection
+    existing = _existing_skill_installs(repo_root)
+    if existing:
+        return existing
+
+    # Tier 2: Filesystem Signal Detection
+    has_claude = (repo_root / ".claude").is_dir() or (repo_root / "CLAUDE.md").is_file()
+    has_agents = (
+        (repo_root / ".agents").is_dir()
+        or (repo_root / ".cursor").is_dir()
+        or (repo_root / "AGENTS.md").is_file()
+        or (repo_root / "GEMINI.md").is_file()
+    )
+
+    if has_claude and not has_agents:
+        return [claude_dest]
+    if has_agents and not has_claude:
+        return [agents_dest]
+    if has_claude and has_agents:
+        return [claude_dest, agents_dest]
+
+    # Tier 3: Greenfield / No Signals
+    return None
+
+
+def resolve_skill_destinations(
+    repo_root: Path,
+    skill_target: str = "auto",
+    non_interactive: bool = False,
+) -> list[Path]:
+    allowed_targets = {"auto", "claude", "agents", "both"}
+    if skill_target not in allowed_targets:
+        raise ValueError(f"Invalid skill_target '{skill_target}'; must be one of {allowed_targets}")
+
+    claude_dest = repo_root / ".claude" / "skills" / "signoff"
+    agents_dest = repo_root / ".agents" / "skills" / "signoff"
+
+    explicit_dests: list[Path] | None = None
+    if skill_target == "claude":
+        explicit_dests = [claude_dest]
+    elif skill_target == "agents":
+        explicit_dests = [agents_dest]
+    elif skill_target == "both":
+        explicit_dests = [claude_dest, agents_dest]
+
+    existing = _existing_skill_installs(repo_root)
+
+    # Expansion Guarantee: Union explicit targets with any existing installations.
+    # Running `--skill-target agents` on a `.claude` install re-vendors `.claude`
+    # to the new release pin while adding `.agents`, preventing version drift.
+    if explicit_dests is not None:
+        union_set = set(explicit_dests) | set(existing)
+        return [repo_root / rel for rel in SKILL_DEST_CANDIDATES if (repo_root / rel) in union_set]
+
+    # skill_target == "auto"
+    detected = detect_skill_destinations(repo_root)
+    if detected is not None:
+        return detected
+
+    # Tier 3 Greenfield (no signals detected)
+    if non_interactive:
+        return [claude_dest, agents_dest]
+
+    print("\nNo existing agent configuration detected.")
+    print("Which harness(es) should /signoff be installed for?")
+    print("  1) Both Claude Code and open-standard agents (Antigravity, Codex, Cursor) [recommended]")
+    print("  2) Claude Code only (.claude/skills/signoff)")
+    print("  3) Open-standard agents only (.agents/skills/signoff)")
+    choice = prompt_user("Select [1-3]", default="1", non_interactive=non_interactive)
+    if choice == "2":
+        return [claude_dest]
+    if choice == "3":
+        return [agents_dest]
+    return [claude_dest, agents_dest]
+
+
+def _normalize_skill_destinations(
+    repo_root: Path,
+    destinations: Optional[list[Path]] = None,
+) -> list[Path]:
+    """Normalize and validate skill destination paths against candidate set.
+
+    Contract: destinations must be absolute candidate paths rooted at repo_root.
+    Never resolves symlinks (lexical comparison only) so symlink targets are not followed.
+    """
+    if destinations is None:
+        return [repo_root / ".claude" / "skills" / "signoff"]
+    if not destinations:
+        raise ValueError("destinations list cannot be empty")
+
+    norm_set: set[str] = set()
+    for d in destinations:
+        matched_rel = None
+        d_path = Path(d)
+        for rel in SKILL_DEST_CANDIDATES:
+            cand_path = repo_root / rel
+            if d_path == cand_path:
+                matched_rel = rel
+                break
+            try:
+                if d_path.relative_to(repo_root).as_posix() == rel:
+                    matched_rel = rel
+                    break
+            except ValueError:
+                pass
+        if matched_rel is None:
+            raise ValueError(f"Destination {d} is not a valid candidate within {SKILL_DEST_CANDIDATES}")
+        norm_set.add(matched_rel)
+
+    return [repo_root / rel for rel in SKILL_DEST_CANDIDATES if rel in norm_set]
+
+
+def validate_policy_a(dest: Path, repo_root: Path, *, allow_dirty: bool = False) -> None:
+    """Validate destination and all parent path components under repo_root."""
+    rel = dest.relative_to(repo_root)
+
+    # 1. Check parent path components and dest for symlinks and ordinary-file collisions
+    curr = dest
+    components = []
+    while curr != repo_root and curr != curr.parent:
+        components.append(curr)
+        curr = curr.parent
+
+    for part in reversed(components):
+        part_rel = part.relative_to(repo_root)
+        if part.is_symlink():
+            raise RuntimeError(
+                f"Destination {part_rel} is a symbolic link. "
+                "The signoff initializer vendors real directory copies and "
+                "does not replace symlink-managed skill installations. "
+                "Remove the symlink or commit a real copy, then re-run."
+            )
+        if part != dest and part.is_file():
+            raise RuntimeError(
+                f"Parent path {part_rel} exists as an ordinary file. "
+                "Remove the file, then re-run."
+            )
+
+    # 2. Check if destination itself is git-ignored (intent-level check)
+    proc = subprocess.run(
+        ["git", "check-ignore", "--no-index", "-q", "--", str(rel)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode == 0:
+        raise RuntimeError(
+            f"Destination {rel} is ignored by git (.gitignore). "
+            "Remove the ignore pattern before running init."
+        )
+    elif proc.returncode != 1:
+        raise RuntimeError(f"git check-ignore failed with exit code {proc.returncode}: {proc.stderr.strip()}")
+
+    # 3. Check for pre-existing ignored untracked files inside destination.
+    # Managed destinations must be pristine even under --allow-dirty: vendoring
+    # replaces the whole directory, so ignored state cannot be preserved safely.
+    if dest.is_dir():
+        proc_ls = subprocess.run(
+            ["git", "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", str(rel)],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        if proc_ls.returncode != 0:
+            raise RuntimeError(f"git ls-files failed with exit code {proc_ls.returncode}: {proc_ls.stderr.strip()}")
+        if proc_ls.stdout:
+            ignored_files = [f for f in proc_ls.stdout.split("\0") if f]
+            if ignored_files:
+                raise RuntimeError(
+                    f"Destination {rel} contains ignored untracked files: {', '.join(ignored_files)}. "
+                    "Remove them before running init."
+                )
+
+    # 4. Check for ordinary file conflict at destination
+    if dest.is_file():
+        raise RuntimeError(
+            f"Destination {rel} exists as an ordinary file. "
+            "Remove the file, then re-run."
+        )
+
+    # 5. Check for unrelated non-empty directory
+    if dest.is_dir() and not (dest / "SKILL.md").is_file() and any(dest.iterdir()):
+        raise RuntimeError(
+            f"Destination {rel} is a non-empty directory not recognized as a /signoff skill. "
+            "Aborting to prevent data loss."
+        )
+
+
+def vendor_skill(
+    repo_root: Path,
+    source: Optional[Path] = None,
+    *,
+    destinations: Optional[list[Path]] = None,
+    allow_dirty: bool = False,
+) -> Path:
+    """Copy the self-contained skills/signoff folder into destination(s).
+
+    Returns the first canonical destination as Path for backward compatibility.
+    """
+    dests = _normalize_skill_destinations(repo_root, destinations)
+    for d in dests:
+        validate_policy_a(d, repo_root, allow_dirty=allow_dirty)
 
     def _copy(src: Path, source_desc: str, ref: str, commit: str) -> Path:
         if not (src / "SKILL.md").is_file():
             raise RuntimeError(f"Skill source {src} does not contain SKILL.md")
-        if dest.exists():
-            shutil.rmtree(dest)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(src, dest)
         stamp = (
             "Vendored /signoff skill — provenance stamp written by init.py; do not edit.\n"
             f"source: {source_desc}\n"
             f"ref: {ref}\n"
             f"commit: {commit}\n"
         )
-        (dest / VENDOR_STAMP_FILENAME).write_text(stamp, encoding="utf-8")
-        return dest
+        for dest in dests:
+            if dest.exists():
+                shutil.rmtree(dest)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(src, dest)
+            (dest / VENDOR_STAMP_FILENAME).write_text(stamp, encoding="utf-8")
+        return dests[0]
 
     if source is not None:
         src = Path(source)
@@ -366,6 +575,38 @@ def vendor_skill(repo_root: Path, source: Optional[Path] = None) -> Path:
             ref=SKILL_SOURCE_REF,
             commit=_git_head_commit(clone_dir),
         )
+
+
+
+def single_destination_hint(
+    repo_root: Path,
+    destinations: list[Path],
+    skill_target: str,
+) -> Optional[str]:
+    """Return a one-line hint when auto-detection resolved to a single destination.
+
+    Auto-detection infers the harness from repository markers, so a repo that
+    carries a `.claude/` directory only for settings would receive a Claude-only
+    install that Codex, Cursor, or Antigravity never load. The summary already
+    prints where the skill landed; this names the destination that was *not*
+    chosen and the flag that adds it, so the outcome is visible rather than
+    discovered when `/signoff` fails to appear in another harness. Returns None
+    when the user chose explicitly or when every candidate was installed.
+    """
+    if skill_target != "auto" or len(destinations) != 1:
+        return None
+    chosen = _normalize_skill_destinations(repo_root, destinations)[0]
+    chosen_rel = chosen.relative_to(repo_root).as_posix()
+    others = [rel for rel in SKILL_DEST_CANDIDATES if rel != chosen_rel]
+    if not others:
+        return None
+    other_rel = others[0]
+    other_flag = "agents" if other_rel.startswith(".agents/") else "claude"
+    return (
+        f"Auto-detected a single harness destination ({chosen_rel}); agents that read "
+        f"{other_rel} will not see /signoff. Re-run with --skill-target {other_flag} "
+        f"(or both) to add it."
+    )
 
 
 def inject_readme_badge(repo_root: Path, slug: str) -> Path:
@@ -420,44 +661,91 @@ def ensure_clean_working_tree(repo_root: Path, allow_dirty: bool = False):
     proc = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"git status failed: {proc.stderr.strip()}")
-    status = proc.stdout
-    if not status.strip():
-        return
+    if proc.stdout.strip():
+        raise RuntimeError(
+            f"Working tree has uncommitted changes:\n{proc.stdout.rstrip()}\n"
+            "Commit or stash them, or use --allow-dirty for changes outside managed scaffold paths."
+        )
 
-    signoff_prefixes = (
-        ".github/workflows/signoff.yml",
-        ".signoff/",
-        ".signoff",
-        ".claude/skills/signoff",
-        "README.md",
+
+def ensure_mutation_boundary_clean(repo_root: Path, scaffold_paths: list[Path]) -> None:
+    """Reject state that the initializer could overwrite or commit accidentally.
+
+    ``--allow-dirty`` permits unrelated unstaged/untracked work only. Any
+    pre-staged change could be swept into the scaffold commit, while changes
+    under a managed path could be overwritten by scaffolding or rollback.
+    """
+    staged = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
     )
-    unrelated_changes = []
-    allowlisted_modifications = []
-    for raw_line in status.splitlines():
-        if not raw_line:
-            continue
-        path_part = raw_line[3:].strip()
-        if path_part.startswith('"') and path_part.endswith('"'):
-            path_part = path_part[1:-1]
-        if any(path_part == p or path_part.startswith(p) for p in signoff_prefixes):
-            allowlisted_modifications.append(path_part)
-        else:
-            unrelated_changes.append(raw_line)
+    if staged.returncode == 1:
+        raise RuntimeError(
+            "The index contains staged changes. Commit or unstage them before running init; "
+            "--allow-dirty permits only unrelated unstaged/untracked work."
+        )
+    if staged.returncode != 0:
+        raise RuntimeError(f"git diff --cached --quiet failed: {staged.stderr.strip()}")
 
-    if unrelated_changes:
-        unrelated_str = "\n".join(unrelated_changes)
-        raise RuntimeError(f"Working tree has uncommitted changes:\n{unrelated_str}\nUse --allow-dirty to override.")
+    rels = sorted({path.relative_to(repo_root).as_posix() for path in scaffold_paths})
+    managed = subprocess.run(
+        [
+            "git",
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--ignored=matching",
+            "--",
+            *rels,
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if managed.returncode != 0:
+        raise RuntimeError(f"git status for managed scaffold paths failed: {managed.stderr.strip()}")
+    if managed.stdout.strip():
+        raise RuntimeError(
+            f"Managed scaffold paths contain uncommitted or ignored state:\n{managed.stdout.rstrip()}\n"
+            "Commit, stash, or remove that state before running init; --allow-dirty does not override this boundary."
+        )
 
-    if allowlisted_modifications:
-        print(f"  ℹ️  Note: Existing modifications to {', '.join(set(allowlisted_modifications))} will be staged.")
+
+def ensure_only_scaffold_paths_staged(repo_root: Path, scaffold_paths: list[Path]) -> None:
+    """Fail before commit if anything outside the managed paths is staged."""
+    proc = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "-z"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"git diff --cached --name-only failed: {proc.stderr.strip()}")
+
+    allowed = sorted({path.relative_to(repo_root).as_posix() for path in scaffold_paths})
+    unexpected = []
+    for changed in (name for name in proc.stdout.split("\0") if name):
+        if not any(changed == path or changed.startswith(path.rstrip("/") + "/") for path in allowed):
+            unexpected.append(changed)
+    if unexpected:
+        raise RuntimeError(
+            "Refusing to create the scaffold commit because unrelated paths became staged: "
+            + ", ".join(unexpected)
+        )
 
 
-def stage_signoff_files(repo_root: Path):
+def stage_signoff_files(
+    repo_root: Path,
+    *,
+    destinations: Optional[list[Path]] = None,
+) -> None:
+    dests = _normalize_skill_destinations(repo_root, destinations)
     files = [
         ".github/workflows/signoff.yml",
         ".signoff/profile.md",
         ".signoff/ruleset.json",
-        ".claude/skills/signoff",
         "README.md",
     ]
     for f in files:
@@ -466,6 +754,13 @@ def stage_signoff_files(repo_root: Path):
             proc = subprocess.run(["git", "add", f], cwd=repo_root, capture_output=True, text=True)
             if proc.returncode != 0:
                 raise RuntimeError(f"git add {f} failed: {proc.stderr.strip()}")
+
+    for dest in dests:
+        if dest.exists():
+            rel = dest.relative_to(repo_root).as_posix()
+            proc = subprocess.run(["git", "add", "-f", "--", rel], cwd=repo_root, capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise RuntimeError(f"git add -f -- {rel} failed: {proc.stderr.strip()}")
 
 
 def resolve_branch_name(repo_root: Path, desired_branch: str) -> str:
@@ -567,7 +862,7 @@ def prompt_user(prompt_text: str, default: str = "", non_interactive: bool = Fal
     return val or default
 
 
-def _remove_scaffold_path(path: Path) -> None:
+def _remove_scaffold_path(path: Path) -> str | None:
     """Remove a file, directory, or symlink init created. Never follows a
     symlink (so a user-made symlinked destination is unlinked, not cleared
     through)."""
@@ -576,19 +871,21 @@ def _remove_scaffold_path(path: Path) -> None:
             path.unlink()
         elif path.is_dir():
             shutil.rmtree(path)
-    except OSError:
-        pass
+    except OSError as exc:
+        return f"remove {path}: {exc}"
+    return None
 
 
-def _prune_empty_dir(path: Path) -> None:
+def _prune_empty_dir(path: Path) -> str | None:
     """Remove a directory only if it exists and is empty, so pruning never
     touches a directory that still holds unrelated user content (e.g. a
     pre-existing .github/ with other workflows)."""
     try:
         if path.is_dir() and not any(path.iterdir()):
             path.rmdir()
-    except OSError:
-        pass
+    except OSError as exc:
+        return f"prune {path}: {exc}"
+    return None
 
 
 def _rollback_scaffold(
@@ -598,7 +895,10 @@ def _rollback_scaffold(
     target_branch: str,
     scaffold_paths: list[Path],
     preexisting: set[Path],
-) -> None:
+    preexisting_dirs: Optional[set[Path]] = None,
+    preexisting_skill_dirs: Optional[dict[Path, list[Path]]] = None,
+    scaffold_started: bool = True,
+) -> list[str]:
     """Undo a partial init when a step after branch creation fails.
 
     Without this, an offline vendor clone (or any post-branch failure) strands
@@ -606,43 +906,121 @@ def _rollback_scaffold(
     files. This restores the repository to exactly the state init found it in:
     paths init created are removed, tracked files it overwrote (e.g. the README
     badge) are reverted to HEAD, and the original branch is restored with the
-    abandoned setup branch dropped. Local git state only — a GitHub ruleset
-    already created via `gh` is idempotent and left in place. Best-effort:
-    every step is guarded so rollback never masks the original error.
+    abandoned setup branch dropped.
+
+    When failure occurs before any scaffold mutations begin (scaffold_started=False),
+    pre-scaffolding failures require only branch cleanup: file removal/restoration
+    and directory pruning are skipped entirely so pre-existing untracked files and
+    empty directories are never disturbed.
+
+    Local git state only — a GitHub ruleset already created via `gh` is idempotent
+    and left in place. Best-effort: every step is attempted and failures are
+    returned so the caller can report incomplete recovery without masking the
+    original exception.
     """
-    # 1. Undo file scaffolding.
-    for path in scaffold_paths:
-        if path in preexisting:
-            # A file init overwrote in place (only the README, in practice);
-            # restore its committed content. No-op when it was left unchanged.
-            rel = path.relative_to(root).as_posix()
-            subprocess.run(["git", "checkout", "HEAD", "--", rel], cwd=root, capture_output=True, text=True)
-        else:
-            _remove_scaffold_path(path)
-    # 2. Prune directories init may have created, leaving user content intact.
-    for directory in (
-        root / ".github" / "workflows",
-        root / ".github",
-        root / ".signoff",
-        root / ".claude" / "skills" / "signoff",
-        root / ".claude" / "skills",
-        root / ".claude",
-    ):
-        _prune_empty_dir(directory)
+    failures: list[str] = []
+
+    def run_git(args: list[str], action: str) -> subprocess.CompletedProcess:
+        try:
+            proc = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+        except OSError as exc:
+            failures.append(f"{action}: {exc}")
+            return subprocess.CompletedProcess(["git", *args], 127, "", str(exc))
+        if proc.returncode != 0:
+            detail = proc.stderr.strip() or f"exit code {proc.returncode}"
+            failures.append(f"{action}: {detail}")
+        return proc
+
+    if scaffold_started:
+        # 1. Undo file scaffolding.
+        for path in scaffold_paths:
+            if path in preexisting:
+                rel = path.relative_to(root).as_posix()
+                if any(path == root / cand for cand in SKILL_DEST_CANDIDATES):
+                    # Pre-existing skill destination: completely remove the destination
+                    # directory so newly written untracked files (e.g. VENDORED-FROM)
+                    # and newly vendored ignored files are cleared, then restore tracked
+                    # content from HEAD.
+                    # Policy A's Step 0 validation and vendor_skill's defensive post-checkout
+                    # re-check prevent a symlink destination from being vendored. If either
+                    # Policy A validation changes, re-audit this removal order so rmtree never
+                    # attempts to traverse or silently ignore a symlink.
+                    try:
+                        if path.is_dir():
+                            shutil.rmtree(path)
+                        elif path.is_file() or path.is_symlink():
+                            path.unlink(missing_ok=True)
+                    except OSError as exc:
+                        failures.append(f"remove managed destination {rel}: {exc}")
+                    checkout_proc = run_git(
+                        ["checkout", "HEAD", "--", rel],
+                        f"restore managed destination {rel}",
+                    )
+                    if (
+                        checkout_proc.returncode == 0
+                        and preexisting_skill_dirs
+                        and path in preexisting_skill_dirs
+                    ):
+                        for rel_dir in preexisting_skill_dirs[path]:
+                            try:
+                                (path / rel_dir).mkdir(parents=True, exist_ok=True)
+                            except OSError as exc:
+                                failures.append(f"restore empty directory {rel}/{rel_dir}: {exc}")
+                else:
+                    # Ordinary pre-existing files (e.g. README.md)
+                    run_git(["checkout", "HEAD", "--", rel], f"restore {rel}")
+            else:
+                failure = _remove_scaffold_path(path)
+                if failure:
+                    failures.append(failure)
+        # 2. Prune directories init may have created, leaving user content intact.
+        for directory in (
+            root / ".github" / "workflows",
+            root / ".github",
+            root / ".signoff",
+            root / ".agents" / "skills" / "signoff",
+            root / ".agents" / "skills",
+            root / ".agents",
+            root / ".claude" / "skills" / "signoff",
+            root / ".claude" / "skills",
+            root / ".claude",
+        ):
+            if preexisting_dirs is None or directory not in preexisting_dirs:
+                failure = _prune_empty_dir(directory)
+                if failure:
+                    failures.append(failure)
     # 3. Restore the starting branch and drop the abandoned setup branch.
     if is_unborn:
         # No commits exist, so there is no setup-branch ref to delete; just
         # point HEAD back at the original unborn branch.
         if original_branch:
-            subprocess.run(["git", "symbolic-ref", "HEAD", f"refs/heads/{original_branch}"], cwd=root, capture_output=True, text=True)
+            run_git(["symbolic-ref", "HEAD", f"refs/heads/{original_branch}"], f"restore unborn branch {original_branch}")
     elif original_branch:
-        subprocess.run(["git", "checkout", original_branch], cwd=root, capture_output=True, text=True)
-        subprocess.run(["git", "branch", "-D", target_branch], cwd=root, capture_output=True, text=True)
+        run_git(["checkout", original_branch], f"restore branch {original_branch}")
+        run_git(["branch", "-D", target_branch], f"delete abandoned branch {target_branch}")
     else:
         # Detached HEAD at start: re-detach at the current commit (the setup
         # branch shares it), then drop the branch name.
-        subprocess.run(["git", "checkout", "--detach"], cwd=root, capture_output=True, text=True)
-        subprocess.run(["git", "branch", "-D", target_branch], cwd=root, capture_output=True, text=True)
+        run_git(["checkout", "--detach"], "restore detached HEAD")
+        run_git(["branch", "-D", target_branch], f"delete abandoned branch {target_branch}")
+
+    rels = sorted({path.relative_to(root).as_posix() for path in scaffold_paths})
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching", "--", *rels],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        failures.append(f"verify rollback state: {exc}")
+    else:
+        if status.returncode != 0:
+            failures.append(f"verify rollback state: {status.stderr.strip() or f'exit code {status.returncode}'}")
+        elif status.stdout.strip():
+            failures.append(f"managed paths remain dirty after rollback: {status.stdout.strip()}")
+
+    return failures
 
 
 def run_init(
@@ -656,15 +1034,38 @@ def run_init(
     non_interactive: bool = False,
     open_browser: bool = False,
     skill_source: Optional[Path] = None,
+    skill_target: str = "auto",
 ) -> InitResult:
     ctx = detect_git_context(repo_root)
     root = ctx.root
     effective_slug = slug or ctx.slug
 
-    # Step 1: Clean tree guard
+    # Step 0.1: Clean tree guard
     ensure_clean_working_tree(root, allow_dirty=allow_dirty)
 
-    # Step 2: Checkout target branch FIRST before scaffolding any files
+    # Step 0.2: Resolve skill destinations
+    resolved_dests = resolve_skill_destinations(
+        root,
+        skill_target=skill_target,
+        non_interactive=non_interactive,
+    )
+
+    scaffold_paths = [
+        root / ".github" / "workflows" / "signoff.yml",
+        root / ".signoff" / "profile.md",
+        root / ".signoff" / "ruleset.json",
+        *resolved_dests,
+        root / "README.md",
+    ]
+
+    # Step 0.3: Policy A verification before branch creation
+    for dest in resolved_dests:
+        validate_policy_a(dest, root, allow_dirty=allow_dirty)
+
+    # Step 0.4: Guard the mutation boundary even when --allow-dirty is set.
+    ensure_mutation_boundary_clean(root, scaffold_paths)
+
+    # Step 0.5: Checkout target branch FIRST before scaffolding any files
     target_branch = resolve_branch_name(root, branch)
     if ctx.is_unborn:
         proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch], cwd=root, capture_output=True, text=True)
@@ -688,15 +1089,28 @@ def run_init(
     # The branch now exists and later steps write files onto it. If any of them
     # fails (most commonly an offline vendor clone), roll the whole thing back
     # so the run is atomic: either a complete setup commit or no trace at all.
-    scaffold_paths = [
-        root / ".github" / "workflows" / "signoff.yml",
-        root / ".signoff" / "profile.md",
-        root / ".signoff" / "ruleset.json",
-        root / ".claude" / "skills" / "signoff",
-        root / "README.md",
-    ]
     preexisting = {p for p in scaffold_paths if p.exists()}
+    ancestor_candidates = [
+        root / ".github",
+        root / ".github" / "workflows",
+        root / ".signoff",
+        root / ".claude",
+        root / ".claude" / "skills",
+        root / ".claude" / "skills" / "signoff",
+        root / ".agents",
+        root / ".agents" / "skills",
+        root / ".agents" / "skills" / "signoff",
+    ]
+    preexisting_dirs = {d for d in ancestor_candidates if d.is_dir()}
+    preexisting_skill_dirs: dict[Path, list[Path]] = {}
+    scaffold_started = False
+    ruleset_res: RulesetResult | None = None
     try:
+        preexisting_skill_dirs = {
+            dest: [d.relative_to(dest) for d in sorted(dest.rglob("*")) if d.is_dir()]
+            for dest in resolved_dests
+            if dest.is_dir()
+        }
         # Step 3: Profile selection
         rec_profile = detect_recommended_profile(root)
         effective_profile = profile_id or rec_profile
@@ -713,9 +1127,10 @@ def run_init(
         print(f"  Active profile: {effective_profile}")
 
         # Step 4: Scaffold files
+        scaffold_started = True
         scaffold_workflow(root, default_branch=ctx.default_branch)
         scaffold_profile(root, profile_id=effective_profile)
-        vendor_skill(root, source=skill_source)
+        vendor_skill(root, source=skill_source, destinations=resolved_dests, allow_dirty=allow_dirty)
         if effective_slug and not skip_badge:
             inject_readme_badge(root, slug=effective_slug)
 
@@ -728,7 +1143,8 @@ def run_init(
         )
 
         # Step 6: Stage and commit
-        stage_signoff_files(root)
+        stage_signoff_files(root, destinations=resolved_dests)
+        ensure_only_scaffold_paths_staged(root, scaffold_paths)
         commit_proc = subprocess.run(
             ["git", "commit", "-m", "chore: scaffold git signoff attestation"],
             cwd=root,
@@ -738,9 +1154,30 @@ def run_init(
         if commit_proc.returncode != 0:
             raise RuntimeError(f"Git commit failed: {commit_proc.stderr.strip()}")
     except BaseException:
-        _rollback_scaffold(root, ctx.current_branch, ctx.is_unborn, target_branch, scaffold_paths, preexisting)
+        rollback_failures = _rollback_scaffold(
+            root,
+            ctx.current_branch,
+            ctx.is_unborn,
+            target_branch,
+            scaffold_paths,
+            preexisting,
+            preexisting_dirs=preexisting_dirs,
+            preexisting_skill_dirs=preexisting_skill_dirs,
+            scaffold_started=scaffold_started,
+        )
         restored = ctx.current_branch or "the previous state"
-        print(f"  ↩️  Rolled back partial setup; repository restored to '{restored}'.", file=sys.stderr)
+        if rollback_failures:
+            print("  ⚠️  Rollback incomplete; inspect the repository before continuing:", file=sys.stderr)
+            for failure in rollback_failures:
+                print(f"    - {failure}", file=sys.stderr)
+        else:
+            print(f"  ↩️  Rolled back partial setup; local Git state restored to '{restored}'.", file=sys.stderr)
+        if ruleset_res is not None and ruleset_res.status == "created":
+            print(
+                "  ⚠️  GitHub ruleset 'Signoff Enforcement' remains configured; "
+                "rollback only restores local Git state.",
+                file=sys.stderr,
+            )
         raise
 
     pr_url = f"https://github.com/{effective_slug}/compare/{ctx.default_branch}...{target_branch}?expand=1" if effective_slug else None
@@ -750,6 +1187,7 @@ def run_init(
         branch=target_branch,
         ruleset=ruleset_res,
         pr_url=pr_url,
+        destinations=resolved_dests,
     )
 
 
@@ -763,6 +1201,7 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--non-interactive", action="store_true", help="Run without interactive prompts")
     parser.add_argument("--open-browser", action="store_true", help="Open GitHub settings in browser if manual fallback is needed")
     parser.add_argument("--skill-source", type=Path, help="Local skills/signoff folder to vendor (offline installs; default: shallow clone)")
+    parser.add_argument("--skill-target", choices=["auto", "claude", "agents", "both"], default="auto", help="Harness destination target (default: auto)")
     return parser.parse_args(args)
 
 
@@ -783,9 +1222,19 @@ def main() -> int:
             non_interactive=args.non_interactive,
             open_browser=args.open_browser,
             skill_source=args.skill_source,
+            skill_target=args.skill_target,
         )
         print(f"\n[3/5] 🌿 Created feature branch '{res.branch}' with scaffold commit.")
-        print("[4/5] 📝 Scaffolded workflow, profile, and vendored the /signoff skill into .claude/skills/signoff.")
+        root_dir = Path.cwd()
+        try:
+            root_dir = detect_git_context().root
+        except Exception:
+            pass
+        dests_str = ", ".join(str(d.relative_to(root_dir)) for d in res.destinations) or ".claude/skills/signoff"
+        print(f"[4/5] 📝 Scaffolded workflow, profile, and vendored the /signoff skill into {dests_str}.")
+        hint = single_destination_hint(root_dir, res.destinations, args.skill_target)
+        if hint:
+            print(f"  ℹ️  {hint}")
         
         # Surfacing ruleset status
         if res.ruleset.status == "created":
@@ -810,6 +1259,7 @@ def main() -> int:
     except Exception as e:
         print(f"\n❌ Error during initialization: {e}", file=sys.stderr)
         return 1
+
 
 
 if __name__ == "__main__":
