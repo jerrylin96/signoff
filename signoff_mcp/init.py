@@ -481,8 +481,10 @@ def validate_policy_a(dest: Path, repo_root: Path, *, allow_dirty: bool = False)
     elif proc.returncode != 1:
         raise RuntimeError(f"git check-ignore failed with exit code {proc.returncode}: {proc.stderr.strip()}")
 
-    # 3. Check for pre-existing ignored untracked files inside destination
-    if not allow_dirty and dest.is_dir():
+    # 3. Check for pre-existing ignored untracked files inside destination.
+    # Managed destinations must be pristine even under --allow-dirty: vendoring
+    # replaces the whole directory, so ignored state cannot be preserved safely.
+    if dest.is_dir():
         proc_ls = subprocess.run(
             ["git", "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", str(rel)],
             cwd=repo_root,
@@ -496,7 +498,7 @@ def validate_policy_a(dest: Path, repo_root: Path, *, allow_dirty: bool = False)
             if ignored_files:
                 raise RuntimeError(
                     f"Destination {rel} contains ignored untracked files: {', '.join(ignored_files)}. "
-                    "Remove them or use --allow-dirty to override."
+                    "Remove them before running init."
                 )
 
     # 4. Check for ordinary file conflict at destination
@@ -628,35 +630,79 @@ def ensure_clean_working_tree(repo_root: Path, allow_dirty: bool = False):
     proc = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"git status failed: {proc.stderr.strip()}")
-    status = proc.stdout
-    if not status.strip():
-        return
+    if proc.stdout.strip():
+        raise RuntimeError(
+            f"Working tree has uncommitted changes:\n{proc.stdout.rstrip()}\n"
+            "Commit or stash them, or use --allow-dirty for changes outside managed scaffold paths."
+        )
 
-    signoff_prefixes = (
-        ".github/workflows/signoff.yml",
-        ".signoff/",
-        ".signoff",
-        "README.md",
+
+def ensure_mutation_boundary_clean(repo_root: Path, scaffold_paths: list[Path]) -> None:
+    """Reject state that the initializer could overwrite or commit accidentally.
+
+    ``--allow-dirty`` permits unrelated unstaged/untracked work only. Any
+    pre-staged change could be swept into the scaffold commit, while changes
+    under a managed path could be overwritten by scaffolding or rollback.
+    """
+    staged = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
     )
-    unrelated_changes = []
-    allowlisted_modifications = []
-    for raw_line in status.splitlines():
-        if not raw_line:
-            continue
-        path_part = raw_line[3:].strip()
-        if path_part.startswith('"') and path_part.endswith('"'):
-            path_part = path_part[1:-1]
-        if any(path_part == p or path_part.startswith(p.rstrip("/") + "/") for p in signoff_prefixes):
-            allowlisted_modifications.append(path_part)
-        else:
-            unrelated_changes.append(raw_line)
+    if staged.returncode == 1:
+        raise RuntimeError(
+            "The index contains staged changes. Commit or unstage them before running init; "
+            "--allow-dirty permits only unrelated unstaged/untracked work."
+        )
+    if staged.returncode != 0:
+        raise RuntimeError(f"git diff --cached --quiet failed: {staged.stderr.strip()}")
 
-    if unrelated_changes:
-        unrelated_str = "\n".join(unrelated_changes)
-        raise RuntimeError(f"Working tree has uncommitted changes:\n{unrelated_str}\nUse --allow-dirty to override.")
+    rels = sorted({path.relative_to(repo_root).as_posix() for path in scaffold_paths})
+    managed = subprocess.run(
+        [
+            "git",
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--ignored=matching",
+            "--",
+            *rels,
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if managed.returncode != 0:
+        raise RuntimeError(f"git status for managed scaffold paths failed: {managed.stderr.strip()}")
+    if managed.stdout.strip():
+        raise RuntimeError(
+            f"Managed scaffold paths contain uncommitted or ignored state:\n{managed.stdout.rstrip()}\n"
+            "Commit, stash, or remove that state before running init; --allow-dirty does not override this boundary."
+        )
 
-    if allowlisted_modifications:
-        print(f"  ℹ️  Note: Existing modifications to {', '.join(set(allowlisted_modifications))} will be staged.")
+
+def ensure_only_scaffold_paths_staged(repo_root: Path, scaffold_paths: list[Path]) -> None:
+    """Fail before commit if anything outside the managed paths is staged."""
+    proc = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "-z"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"git diff --cached --name-only failed: {proc.stderr.strip()}")
+
+    allowed = sorted({path.relative_to(repo_root).as_posix() for path in scaffold_paths})
+    unexpected = []
+    for changed in (name for name in proc.stdout.split("\0") if name):
+        if not any(changed == path or changed.startswith(path.rstrip("/") + "/") for path in allowed):
+            unexpected.append(changed)
+    if unexpected:
+        raise RuntimeError(
+            "Refusing to create the scaffold commit because unrelated paths became staged: "
+            + ", ".join(unexpected)
+        )
 
 
 def stage_signoff_files(
@@ -785,7 +831,7 @@ def prompt_user(prompt_text: str, default: str = "", non_interactive: bool = Fal
     return val or default
 
 
-def _remove_scaffold_path(path: Path) -> None:
+def _remove_scaffold_path(path: Path) -> str | None:
     """Remove a file, directory, or symlink init created. Never follows a
     symlink (so a user-made symlinked destination is unlinked, not cleared
     through)."""
@@ -794,19 +840,21 @@ def _remove_scaffold_path(path: Path) -> None:
             path.unlink()
         elif path.is_dir():
             shutil.rmtree(path)
-    except OSError:
-        pass
+    except OSError as exc:
+        return f"remove {path}: {exc}"
+    return None
 
 
-def _prune_empty_dir(path: Path) -> None:
+def _prune_empty_dir(path: Path) -> str | None:
     """Remove a directory only if it exists and is empty, so pruning never
     touches a directory that still holds unrelated user content (e.g. a
     pre-existing .github/ with other workflows)."""
     try:
         if path.is_dir() and not any(path.iterdir()):
             path.rmdir()
-    except OSError:
-        pass
+    except OSError as exc:
+        return f"prune {path}: {exc}"
+    return None
 
 
 def _rollback_scaffold(
@@ -819,7 +867,7 @@ def _rollback_scaffold(
     preexisting_dirs: Optional[set[Path]] = None,
     preexisting_skill_dirs: Optional[dict[Path, list[Path]]] = None,
     scaffold_started: bool = True,
-) -> None:
+) -> list[str]:
     """Undo a partial init when a step after branch creation fails.
 
     Without this, an offline vendor clone (or any post-branch failure) strands
@@ -835,9 +883,23 @@ def _rollback_scaffold(
     empty directories are never disturbed.
 
     Local git state only — a GitHub ruleset already created via `gh` is idempotent
-    and left in place. Best-effort: every step is guarded so rollback never masks
-    the original error.
+    and left in place. Best-effort: every step is attempted and failures are
+    returned so the caller can report incomplete recovery without masking the
+    original exception.
     """
+    failures: list[str] = []
+
+    def run_git(args: list[str], action: str) -> subprocess.CompletedProcess:
+        try:
+            proc = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+        except OSError as exc:
+            failures.append(f"{action}: {exc}")
+            return subprocess.CompletedProcess(["git", *args], 127, "", str(exc))
+        if proc.returncode != 0:
+            detail = proc.stderr.strip() or f"exit code {proc.returncode}"
+            failures.append(f"{action}: {detail}")
+        return proc
+
     if scaffold_started:
         # 1. Undo file scaffolding.
         for path in scaffold_paths:
@@ -852,15 +914,16 @@ def _rollback_scaffold(
                     # re-check prevent a symlink destination from being vendored. If either
                     # Policy A validation changes, re-audit this removal order so rmtree never
                     # attempts to traverse or silently ignore a symlink.
-                    if path.is_dir():
-                        shutil.rmtree(path, ignore_errors=True)
-                    elif path.is_file() or path.is_symlink():
-                        path.unlink(missing_ok=True)
-                    checkout_proc = subprocess.run(
-                        ["git", "checkout", "HEAD", "--", rel],
-                        cwd=root,
-                        capture_output=True,
-                        text=True,
+                    try:
+                        if path.is_dir():
+                            shutil.rmtree(path)
+                        elif path.is_file() or path.is_symlink():
+                            path.unlink(missing_ok=True)
+                    except OSError as exc:
+                        failures.append(f"remove managed destination {rel}: {exc}")
+                    checkout_proc = run_git(
+                        ["checkout", "HEAD", "--", rel],
+                        f"restore managed destination {rel}",
                     )
                     if (
                         checkout_proc.returncode == 0
@@ -868,12 +931,17 @@ def _rollback_scaffold(
                         and path in preexisting_skill_dirs
                     ):
                         for rel_dir in preexisting_skill_dirs[path]:
-                            (path / rel_dir).mkdir(parents=True, exist_ok=True)
+                            try:
+                                (path / rel_dir).mkdir(parents=True, exist_ok=True)
+                            except OSError as exc:
+                                failures.append(f"restore empty directory {rel}/{rel_dir}: {exc}")
                 else:
                     # Ordinary pre-existing files (e.g. README.md)
-                    subprocess.run(["git", "checkout", "HEAD", "--", rel], cwd=root, capture_output=True, text=True)
+                    run_git(["checkout", "HEAD", "--", rel], f"restore {rel}")
             else:
-                _remove_scaffold_path(path)
+                failure = _remove_scaffold_path(path)
+                if failure:
+                    failures.append(failure)
         # 2. Prune directories init may have created, leaving user content intact.
         for directory in (
             root / ".github" / "workflows",
@@ -887,21 +955,41 @@ def _rollback_scaffold(
             root / ".claude",
         ):
             if preexisting_dirs is None or directory not in preexisting_dirs:
-                _prune_empty_dir(directory)
+                failure = _prune_empty_dir(directory)
+                if failure:
+                    failures.append(failure)
     # 3. Restore the starting branch and drop the abandoned setup branch.
     if is_unborn:
         # No commits exist, so there is no setup-branch ref to delete; just
         # point HEAD back at the original unborn branch.
         if original_branch:
-            subprocess.run(["git", "symbolic-ref", "HEAD", f"refs/heads/{original_branch}"], cwd=root, capture_output=True, text=True)
+            run_git(["symbolic-ref", "HEAD", f"refs/heads/{original_branch}"], f"restore unborn branch {original_branch}")
     elif original_branch:
-        subprocess.run(["git", "checkout", original_branch], cwd=root, capture_output=True, text=True)
-        subprocess.run(["git", "branch", "-D", target_branch], cwd=root, capture_output=True, text=True)
+        run_git(["checkout", original_branch], f"restore branch {original_branch}")
+        run_git(["branch", "-D", target_branch], f"delete abandoned branch {target_branch}")
     else:
         # Detached HEAD at start: re-detach at the current commit (the setup
         # branch shares it), then drop the branch name.
-        subprocess.run(["git", "checkout", "--detach"], cwd=root, capture_output=True, text=True)
-        subprocess.run(["git", "branch", "-D", target_branch], cwd=root, capture_output=True, text=True)
+        run_git(["checkout", "--detach"], "restore detached HEAD")
+        run_git(["branch", "-D", target_branch], f"delete abandoned branch {target_branch}")
+
+    rels = sorted({path.relative_to(root).as_posix() for path in scaffold_paths})
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching", "--", *rels],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        failures.append(f"verify rollback state: {exc}")
+    else:
+        if status.returncode != 0:
+            failures.append(f"verify rollback state: {status.stderr.strip() or f'exit code {status.returncode}'}")
+        elif status.stdout.strip():
+            failures.append(f"managed paths remain dirty after rollback: {status.stdout.strip()}")
+
+    return failures
 
 
 def run_init(
@@ -931,11 +1019,22 @@ def run_init(
         non_interactive=non_interactive,
     )
 
+    scaffold_paths = [
+        root / ".github" / "workflows" / "signoff.yml",
+        root / ".signoff" / "profile.md",
+        root / ".signoff" / "ruleset.json",
+        *resolved_dests,
+        root / "README.md",
+    ]
+
     # Step 0.3: Policy A verification before branch creation
     for dest in resolved_dests:
         validate_policy_a(dest, root, allow_dirty=allow_dirty)
 
-    # Step 0.4: Checkout target branch FIRST before scaffolding any files
+    # Step 0.4: Guard the mutation boundary even when --allow-dirty is set.
+    ensure_mutation_boundary_clean(root, scaffold_paths)
+
+    # Step 0.5: Checkout target branch FIRST before scaffolding any files
     target_branch = resolve_branch_name(root, branch)
     if ctx.is_unborn:
         proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch], cwd=root, capture_output=True, text=True)
@@ -959,13 +1058,6 @@ def run_init(
     # The branch now exists and later steps write files onto it. If any of them
     # fails (most commonly an offline vendor clone), roll the whole thing back
     # so the run is atomic: either a complete setup commit or no trace at all.
-    scaffold_paths = [
-        root / ".github" / "workflows" / "signoff.yml",
-        root / ".signoff" / "profile.md",
-        root / ".signoff" / "ruleset.json",
-        *resolved_dests,
-        root / "README.md",
-    ]
     preexisting = {p for p in scaffold_paths if p.exists()}
     ancestor_candidates = [
         root / ".github",
@@ -1020,6 +1112,7 @@ def run_init(
 
         # Step 6: Stage and commit
         stage_signoff_files(root, destinations=resolved_dests)
+        ensure_only_scaffold_paths_staged(root, scaffold_paths)
         commit_proc = subprocess.run(
             ["git", "commit", "-m", "chore: scaffold git signoff attestation"],
             cwd=root,
@@ -1029,7 +1122,7 @@ def run_init(
         if commit_proc.returncode != 0:
             raise RuntimeError(f"Git commit failed: {commit_proc.stderr.strip()}")
     except BaseException:
-        _rollback_scaffold(
+        rollback_failures = _rollback_scaffold(
             root,
             ctx.current_branch,
             ctx.is_unborn,
@@ -1041,7 +1134,12 @@ def run_init(
             scaffold_started=scaffold_started,
         )
         restored = ctx.current_branch or "the previous state"
-        print(f"  ↩️  Rolled back partial setup; repository restored to '{restored}'.", file=sys.stderr)
+        if rollback_failures:
+            print("  ⚠️  Rollback incomplete; inspect the repository before continuing:", file=sys.stderr)
+            for failure in rollback_failures:
+                print(f"    - {failure}", file=sys.stderr)
+        else:
+            print(f"  ↩️  Rolled back partial setup; repository restored to '{restored}'.", file=sys.stderr)
         raise
 
     pr_url = f"https://github.com/{effective_slug}/compare/{ctx.default_branch}...{target_branch}?expand=1" if effective_slug else None

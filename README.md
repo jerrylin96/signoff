@@ -105,7 +105,7 @@ nothing account-scoped.
 > [!NOTE]
 > **Initializer Flags & Policy A:**
 > - `--skill-target {auto,claude,agents,both}`: Selects target client destinations (defaults to auto-detect based on repo markers).
-> - `--allow-dirty`: Bypasses the pre-flight clean-tree check and the check for pre-existing ignored untracked files inside the destination; it does **not** bypass Policy A refusals for symbolic links, parent path collisions, unrelated non-empty directories, or destination-level `.gitignore` rules. Any uncommitted state inside a skill destination admitted via `--allow-dirty` is overwritten during vendoring and cannot be recovered by rollback.
+> - `--allow-dirty`: Permits unrelated unstaged/untracked work to remain in place. It still refuses any pre-staged change, any uncommitted or ignored state under paths the initializer manages, and all Policy A violations (symbolic links, parent-path collisions, unrelated non-empty directories, and destination-level `.gitignore` rules). This boundary prevents user work from being swept into the scaffold commit or overwritten during vendoring/rollback.
 
 ## Make it yours: changing what gets asked
 

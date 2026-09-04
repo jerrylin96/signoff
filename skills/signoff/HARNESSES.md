@@ -30,7 +30,7 @@ Repositories can vendor `/signoff` into one or both candidate locations using `-
 
 When invoked with `--skill-target auto` (the default), `init.py` inspects the repository for signals (`.claude`, `CLAUDE.md`, `.agents`, `AGENTS.md`, `GEMINI.md`, `.cursor`) and automatically selects the appropriate destination. In interactive greenfield setups without existing markers, it prompts the user; in non-interactive greenfield setups, it defaults to both destinations. Explicit choices (`--skill-target claude`, `--skill-target agents`, `--skill-target both`) are unioned with existing installations so re-running `init.py` always updates all configured harnesses together without version drift. A recognized existing install (a candidate path whose target contains `SKILL.md`, symlink or not) is always unioned into the destination set and cannot be excluded by any `--skill-target` value; a symlinked one is then refused by Policy A and must be replaced with a real copy first. A broken symlink is not recognized and is not unioned.
 
-Re-running the initializer requires a clean working tree apart from the scaffold files, and modifications inside an existing skill destination are no longer allowlisted (must be committed or reverted first).
+Re-running the initializer requires a clean working tree by default. `--allow-dirty` permits unrelated unstaged/untracked work only: pre-staged changes and any uncommitted or ignored state under managed scaffold paths are refused before branch creation, and the index is checked again before the scaffold commit.
 
 ### Cross-Harness Compatibility Matrix
 

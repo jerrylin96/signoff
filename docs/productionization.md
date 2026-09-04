@@ -309,10 +309,14 @@ Recorded so they never need re-derivation; each names its future fix.
   unrelated non-empty directories are refused with actionable diagnostic messages.
   Outside repos should commit real copies — dogfood symlinks at
   `.claude/skills/signoff` and `.agents/skills/signoff` are this repository's
-  internal pattern only. Limitation with `--allow-dirty`: any uncommitted state
-  inside a skill destination admitted via `--allow-dirty` (tracked modifications,
-  untracked files, ignored descendants) is replaced by vendoring and cannot be
-  reconstructed by rollback, which restores HEAD content only.
+  internal pattern only. `--allow-dirty` is intentionally narrow: it permits
+  unrelated unstaged/untracked work, but refuses pre-staged changes and any
+  uncommitted or ignored state under managed scaffold paths. The guard runs
+  before branch creation, and a second staged-path check runs immediately before
+  the scaffold commit, preventing user work from being overwritten or committed.
+  Rollback is best-effort and preserves the original exception, but every failed
+  filesystem/Git recovery operation is now collected and reported; the initializer
+  only claims the repository was restored when no rollback failure was observed.
 - **Old-channel installs are orphaned.** Accounts that installed the
   retired plugin or zip skill stop receiving anything and are not notified;
   accepted as a pre-production breaking change (the maintainer removed

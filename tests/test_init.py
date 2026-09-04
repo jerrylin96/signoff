@@ -307,8 +307,35 @@ def test_dirty_working_tree_guard(temp_git_repo):
 def test_dirty_working_tree_unstaged_readme(temp_git_repo):
     readme = temp_git_repo / "README.md"
     readme.write_text("# Modified Header\n\nBody text\n", encoding="utf-8")
-    # README is on the allowlist, so this should not raise
-    init.ensure_clean_working_tree(temp_git_repo, allow_dirty=False)
+    with pytest.raises(RuntimeError, match="Working tree has uncommitted changes"):
+        init.ensure_clean_working_tree(temp_git_repo, allow_dirty=False)
+
+
+def test_mutation_boundary_rejects_dirty_readme_with_allow_dirty(temp_git_repo):
+    readme = temp_git_repo / "README.md"
+    readme.write_text("# User work that must not be overwritten\n", encoding="utf-8")
+    paths = [readme, temp_git_repo / ".claude" / "skills" / "signoff"]
+
+    with pytest.raises(RuntimeError, match="Managed scaffold paths contain uncommitted"):
+        init.ensure_mutation_boundary_clean(temp_git_repo, paths)
+
+
+def test_mutation_boundary_rejects_prestaged_unrelated_change(temp_git_repo):
+    unrelated = temp_git_repo / "unrelated.txt"
+    unrelated.write_text("staged user work\n", encoding="utf-8")
+    subprocess.run(["git", "add", "unrelated.txt"], cwd=temp_git_repo, check=True)
+
+    with pytest.raises(RuntimeError, match="index contains staged changes"):
+        init.ensure_mutation_boundary_clean(temp_git_repo, [temp_git_repo / "README.md"])
+
+
+def test_only_scaffold_paths_staged_rejects_unrelated_path(temp_git_repo):
+    unrelated = temp_git_repo / "unrelated.txt"
+    unrelated.write_text("staged concurrently\n", encoding="utf-8")
+    subprocess.run(["git", "add", "unrelated.txt"], cwd=temp_git_repo, check=True)
+
+    with pytest.raises(RuntimeError, match="unrelated paths became staged"):
+        init.ensure_only_scaffold_paths_staged(temp_git_repo, [temp_git_repo / "README.md"])
 
 
 def test_selective_staging(temp_git_repo):
@@ -820,7 +847,7 @@ def test_policy_a_refuses_preexisting_ignored_untracked_files(temp_git_repo):
         init.validate_policy_a(dest, temp_git_repo, allow_dirty=False)
 
 
-def test_policy_a_accepts_preexisting_ignored_untracked_files_with_allow_dirty(temp_git_repo):
+def test_policy_a_refuses_preexisting_ignored_untracked_files_with_allow_dirty(temp_git_repo):
     dest = temp_git_repo / ".claude" / "skills" / "signoff"
     dest.mkdir(parents=True, exist_ok=True)
     (dest / "SKILL.md").write_text("# existing skill", encoding="utf-8")
@@ -828,8 +855,8 @@ def test_policy_a_accepts_preexisting_ignored_untracked_files_with_allow_dirty(t
     gitignore.write_text("*.tmp\n", encoding="utf-8")
     (dest / "scratch.tmp").write_text("ignored untracked", encoding="utf-8")
 
-    # Should not raise with allow_dirty=True
-    init.validate_policy_a(dest, temp_git_repo, allow_dirty=True)
+    with pytest.raises(RuntimeError, match=r"contains ignored untracked files"):
+        init.validate_policy_a(dest, temp_git_repo, allow_dirty=True)
 
 
 def test_policy_a_refuses_destination_ordinary_file(temp_git_repo):
@@ -1145,6 +1172,29 @@ def test_end_to_end_explicit_target(temp_git_repo):
     assert result.destinations == [agents]
 
 
+def test_allow_dirty_preserves_unrelated_unstaged_work(temp_git_repo):
+    unrelated = temp_git_repo / "unrelated.txt"
+    unrelated.write_text("committed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "unrelated.txt"], cwd=temp_git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "add unrelated file"], cwd=temp_git_repo, check=True)
+    unrelated.write_text("user work\n", encoding="utf-8")
+
+    init.run_init(
+        repo_root=temp_git_repo,
+        skip_ruleset=True,
+        non_interactive=True,
+        skill_source=SKILL_SRC,
+        skill_target="agents",
+        allow_dirty=True,
+    )
+
+    assert unrelated.read_text(encoding="utf-8") == "user work\n"
+    status = subprocess.check_output(["git", "status", "--porcelain"], cwd=temp_git_repo, text=True)
+    assert " M unrelated.txt" in status
+    committed = subprocess.check_output(["git", "show", "--format=", "--name-only", "HEAD"], cwd=temp_git_repo, text=True)
+    assert "unrelated.txt" not in committed.splitlines()
+
+
 def _dir_snapshot(dir_path: Path) -> dict[str, str | None]:
     import hashlib
     snapshot = {}
@@ -1371,8 +1421,55 @@ def test_rollback_when_snapshotting_raises_permission_error(temp_git_repo):
     assert _dir_snapshot(dest) == before_snapshot
 
 
-def test_rollback_allow_dirty_untracked_destination_leaves_no_empty_skeleton(temp_git_repo):
-    """Untracked destination with nested dirs under --allow-dirty leaves no empty skeleton when rollback checkout fails."""
+def test_rollback_returns_and_reports_incomplete_recovery(temp_git_repo, capsys):
+    empty_src = temp_git_repo.parent / "not-a-skill-rollback-report"
+    empty_src.mkdir()
+
+    with patch.object(init, "_rollback_scaffold", return_value=["sentinel restore failure"]):
+        with pytest.raises(RuntimeError, match="does not contain SKILL.md"):
+            init.run_init(
+                repo_root=temp_git_repo,
+                skip_ruleset=True,
+                non_interactive=True,
+                skill_source=empty_src,
+                skill_target="claude",
+            )
+
+    err = capsys.readouterr().err
+    assert "Rollback incomplete" in err
+    assert "sentinel restore failure" in err
+    assert "repository restored" not in err
+
+
+def test_rollback_collects_git_invocation_errors(temp_git_repo):
+    subprocess.run(["git", "checkout", "-b", "signoff/init"], cwd=temp_git_repo, check=True)
+    original_run = init.subprocess.run
+
+    def fail_restore(cmd, *args, **kwargs):
+        if cmd == ["git", "checkout", "main"]:
+            raise OSError("simulated git execution failure")
+        return original_run(cmd, *args, **kwargs)
+
+    with patch.object(init.subprocess, "run", side_effect=fail_restore):
+        failures = init._rollback_scaffold(
+            temp_git_repo,
+            original_branch="main",
+            is_unborn=False,
+            target_branch="signoff/init",
+            scaffold_paths=[temp_git_repo / "README.md"],
+            preexisting={temp_git_repo / "README.md"},
+            scaffold_started=False,
+        )
+
+    assert any("restore branch main: simulated git execution failure" in failure for failure in failures)
+    assert any("delete abandoned branch signoff/init" in failure for failure in failures)
+
+    subprocess.run(["git", "checkout", "main"], cwd=temp_git_repo, check=True)
+    subprocess.run(["git", "branch", "-D", "signoff/init"], cwd=temp_git_repo, check=True)
+
+
+def test_allow_dirty_untracked_destination_is_rejected_before_mutation(temp_git_repo):
+    """--allow-dirty never admits untracked state under a managed destination."""
     dest = temp_git_repo / ".claude" / "skills" / "signoff"
     dest.mkdir(parents=True)
     (dest / "SKILL.md").write_text("# untracked skill\n", encoding="utf-8")
@@ -1383,16 +1480,16 @@ def test_rollback_allow_dirty_untracked_destination_leaves_no_empty_skeleton(tem
 
     orig_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=temp_git_repo, text=True).strip()
 
-    with patch.object(init, "stage_signoff_files", side_effect=RuntimeError("forced failure after vendoring")):
-        with pytest.raises(RuntimeError, match="forced failure after vendoring"):
-            init.run_init(
-                repo_root=temp_git_repo,
-                skip_ruleset=True,
-                non_interactive=True,
-                skill_source=SKILL_SRC,
-                skill_target="claude",
-                allow_dirty=True,
-            )
+    before_snapshot = _dir_snapshot(dest)
+    with pytest.raises(RuntimeError, match="Managed scaffold paths contain uncommitted"):
+        init.run_init(
+            repo_root=temp_git_repo,
+            skip_ruleset=True,
+            non_interactive=True,
+            skill_source=SKILL_SRC,
+            skill_target="claude",
+            allow_dirty=True,
+        )
 
     curr_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=temp_git_repo, text=True).strip()
     assert curr_branch == orig_branch
@@ -1400,13 +1497,7 @@ def test_rollback_allow_dirty_untracked_destination_leaves_no_empty_skeleton(tem
     branches = subprocess.check_output(["git", "branch"], cwd=temp_git_repo, text=True)
     assert "signoff/init" not in branches
 
-    assert not dest.exists()
-    status = subprocess.check_output(
-        ["git", "status", "--porcelain", "--ignored", "--untracked-files=all", "--", ".claude/skills/signoff"],
-        cwd=temp_git_repo,
-        text=True,
-    )
-    assert status.strip() == ""
+    assert _dir_snapshot(dest) == before_snapshot
 
 
 def test_normalize_skill_destinations_rejects_relative_path(temp_git_repo):
