@@ -653,6 +653,25 @@ def test_rollback_reverts_readme_badge(temp_git_repo):
     assert status.strip() == ""
 
 
+def test_rollback_warns_when_remote_ruleset_remains(temp_git_repo, capsys):
+    with (
+        patch.object(init, "setup_ruleset", return_value=init.RulesetResult("created")),
+        patch.object(init, "stage_signoff_files", side_effect=RuntimeError("fail after ruleset creation")),
+    ):
+        with pytest.raises(RuntimeError, match="fail after ruleset creation"):
+            init.run_init(
+                repo_root=temp_git_repo,
+                branch="signoff/init",
+                non_interactive=True,
+                skill_source=SKILL_SRC,
+            )
+
+    err = capsys.readouterr().err
+    assert "local Git state restored" in err
+    assert "GitHub ruleset 'Signoff Enforcement' remains configured" in err
+    assert "rollback only restores local Git state" in err
+
+
 def test_rollback_unborn_head(tmp_path):
     # A repo with no commits yet must return to its unborn branch on failure.
     repo = tmp_path / "unborn"

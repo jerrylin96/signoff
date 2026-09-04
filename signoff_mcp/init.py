@@ -1073,6 +1073,7 @@ def run_init(
     preexisting_dirs = {d for d in ancestor_candidates if d.is_dir()}
     preexisting_skill_dirs: dict[Path, list[Path]] = {}
     scaffold_started = False
+    ruleset_res: RulesetResult | None = None
     try:
         preexisting_skill_dirs = {
             dest: [d.relative_to(dest) for d in sorted(dest.rglob("*")) if d.is_dir()]
@@ -1139,7 +1140,13 @@ def run_init(
             for failure in rollback_failures:
                 print(f"    - {failure}", file=sys.stderr)
         else:
-            print(f"  ↩️  Rolled back partial setup; repository restored to '{restored}'.", file=sys.stderr)
+            print(f"  ↩️  Rolled back partial setup; local Git state restored to '{restored}'.", file=sys.stderr)
+        if ruleset_res is not None and ruleset_res.status == "created":
+            print(
+                "  ⚠️  GitHub ruleset 'Signoff Enforcement' remains configured; "
+                "rollback only restores local Git state.",
+                file=sys.stderr,
+            )
         raise
 
     pr_url = f"https://github.com/{effective_slug}/compare/{ctx.default_branch}...{target_branch}?expand=1" if effective_slug else None

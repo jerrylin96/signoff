@@ -316,7 +316,9 @@ Recorded so they never need re-derivation; each names its future fix.
   the scaffold commit, preventing user work from being overwritten or committed.
   Rollback is best-effort and preserves the original exception, but every failed
   filesystem/Git recovery operation is now collected and reported; the initializer
-  only claims the repository was restored when no rollback failure was observed.
+  only claims local Git state was restored when no rollback failure was observed.
+  If GitHub ruleset creation succeeded before a later local failure, the runtime
+  explicitly warns that the remote ruleset remains configured.
 - **Old-channel installs are orphaned.** Accounts that installed the
   retired plugin or zip skill stop receiving anything and are not notified;
   accepted as a pre-production breaking change (the maintainer removed
