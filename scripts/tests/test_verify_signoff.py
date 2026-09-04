@@ -832,4 +832,151 @@ def test_check_audit_harness_claude_code_worktree_fallback(repo, tmp_path, monke
     assert any("VALID MATCH" in line for line in lines)
 
 
+def test_check_audit_rejects_unrelated_reviewed_commit_sha(repo):
+    # A commit with valid trailers but pointing to an unrelated commit and tree
+    unrelated_sha = "a" * 40
+    unrelated_tree = "b" * 40
+    msg = audit_attestation_message(
+        unrelated_sha,
+        unrelated_tree,
+        harness_id="generic-file",
+        conv_id="some-conv",
+        digest="sha256:" + "c" * 64,
+        nbytes="100",
+    )
+    commit_file(repo, "normal_file.txt", "normal content", msg)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is False
+    assert any("No signoff attestation found" in line for line in lines)
+
+
+def test_check_audit_fetches_origin_notes(repo, monkeypatch):
+    fetched_cmds = []
+    original_git = verify_signoff.git
+
+    def tracking_git(repo_arg, *args, **kwargs):
+        if "fetch" in args and "origin" in args:
+            fetched_cmds.append(list(args))
+            return subprocess.CompletedProcess(["git", *args], 0, "", "")
+        return original_git(repo_arg, *args, **kwargs)
+
+    monkeypatch.setattr(verify_signoff, "git", tracking_git)
+
+    # Calling main with --audit should trigger origin notes fetch
+    verify_signoff.main(["--repo", str(repo), "--audit", "HEAD"])
+    assert any(
+        cmd[0] == "fetch" and cmd[1] == "origin" and "+refs/notes/signoff:refs/notes/signoff-verify" in cmd[2]
+        for cmd in fetched_cmds
+    )
+
+
+def test_split_attestation_blocks_three_blocks():
+    block1 = (
+        "[SIGNOFF 2026-09-01T12:00:00Z]\n"
+        "Signoff-Spec-Version: 0.1.0\n"
+        "Signoff-Status: passed\n"
+        "Signoff-Reviewed-Commit-SHA: 1111111111111111111111111111111111111111\n"
+        "Signoff-Reviewed-Tree-SHA: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+        "Signoff-Agent: model=claude harness=test\n"
+        "Signoff-Human: user@example.com\n"
+    )
+    block2 = (
+        "[SIGNOFF 2026-09-02T12:00:00Z]\n"
+        "Signoff-Spec-Version: 0.1.0\n"
+        "Signoff-Status: passed\n"
+        "Signoff-Reviewed-Commit-SHA: 2222222222222222222222222222222222222222\n"
+        "Signoff-Reviewed-Tree-SHA: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n"
+        "Signoff-Agent: model=claude harness=test\n"
+        "Signoff-Human: user@example.com\n"
+    )
+    block3 = (
+        "[SIGNOFF 2026-09-03T12:00:00Z]\n"
+        "Signoff-Spec-Version: 0.1.0\n"
+        "Signoff-Status: passed\n"
+        "Signoff-Reviewed-Commit-SHA: 3333333333333333333333333333333333333333\n"
+        "Signoff-Reviewed-Tree-SHA: cccccccccccccccccccccccccccccccccccccccc\n"
+        "Signoff-Agent: model=claude harness=test\n"
+        "Signoff-Human: user@example.com\n"
+    )
+    combined = f"{block1}\n{block2}\n\n{block3}"
+    blocks = verify_signoff.split_attestation_blocks(combined)
+    assert len(blocks) == 3
+    assert "1111111111111111111111111111111111111111" in blocks[0]
+    assert "2222222222222222222222222222222222222222" in blocks[1]
+    assert "3333333333333333333333333333333333333333" in blocks[2]
+
+
+def test_check_audit_harness_codex_cli(repo, tmp_path, monkeypatch):
+    codex_home = tmp_path / "codex_home"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    conv_id = "codex-session-abc"
+
+    # Codex stores sessions in date-partitioned paths: sessions/YYYY/MM/DD/rollout-*-<id>.jsonl
+    session_dir = codex_home / "sessions" / "2026" / "09" / "04"
+    session_dir.mkdir(parents=True)
+    transcript_file = session_dir / f"rollout-20260904-123456-{conv_id}.jsonl"
+    raw_content = b'{"role": "user", "content": "codex prompt"}\n'
+    transcript_file.write_bytes(raw_content)
+
+    nbytes = len(raw_content)
+    expected_digest = f"sha256:{hashlib.sha256(raw_content).hexdigest()}"
+
+    commit_file(repo, "codex_feature.py", "x = 1\n", "add codex feature")
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+
+    msg = audit_attestation_message(
+        reviewed, tree, harness_id="codex-cli", conv_id=conv_id,
+        digest=expected_digest, nbytes=str(nbytes),
+    )
+    git(repo, "commit", "--allow-empty", "-m", msg)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is True
+    assert any("VALID MATCH" in line for line in lines)
+
+
+def test_check_audit_generic_file_missing_env(repo, monkeypatch):
+    monkeypatch.delenv("SIGNOFF_TRANSCRIPT_FILE", raising=False)
+    conv_id = "session-not-a-file-id"
+
+    commit_file(repo, "generic_feature.py", "y = 2\n", "add generic feature")
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+
+    msg = audit_attestation_message(
+        reviewed, tree, harness_id="generic-file", conv_id=conv_id,
+        digest="sha256:" + "0" * 64, nbytes="50",
+    )
+    git(repo, "commit", "--allow-empty", "-m", msg)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is False
+    assert any("SIGNOFF_TRANSCRIPT_FILE" in line for line in lines)
+
+
+def test_check_audit_rejects_malformed_trailers(repo):
+    commit_file(repo, "target.py", "z = 3\n", "target commit")
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+
+    # Create attestation with invalid status
+    bad_msg = (
+        f"[SIGNOFF {reviewed[:7]}]: bad status\n\n"
+        f"Signoff-Spec-Version: 1.0\n"
+        f"Signoff-Status: INVALID_STATUS\n"
+        f"Signoff-Reviewed-Commit-SHA: {reviewed}\n"
+        f"Signoff-Reviewed-Tree-SHA: {tree}\n"
+        f"Signoff-Verified-By: test@example.com\n"
+        f"Signoff-Conversation-ID: some-id\n"
+        f"Signoff-Transcript-Digest: sha256:{'0'*64}\n"
+        f"Signoff-Transcript-Bytes: 10\n"
+        f"Signoff-Harness-ID: generic-file\n"
+    )
+    git(repo, "commit", "--allow-empty", "-m", bad_msg)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is False
+    assert any("Malformed signoff attestation" in line or "No signoff attestation found" in line for line in lines)
 

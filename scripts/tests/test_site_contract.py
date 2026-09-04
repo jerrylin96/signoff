@@ -58,6 +58,15 @@ def test_site_advertises_badge_and_verifier():
     assert "jerrylin96/signoff/verify@main" in html
 
 
+def test_site_section_numbers_are_sequential():
+    html = _html()
+    nums = re.findall(r'<span class="num">(\d+)</span>', html)
+    assert nums, "No section numbers found"
+    expected = [f"{i:02d}" for i in range(1, len(nums) + 1)]
+    assert nums == expected
+    assert len(nums) == len(set(nums)), "Duplicate section numbers detected"
+
+
 def test_pages_workflow_deploys_site_dir():
     wf = os.path.join(
         os.path.dirname(__file__), "..", "..", ".github", "workflows", "pages.yml"

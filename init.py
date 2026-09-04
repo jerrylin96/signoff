@@ -347,7 +347,6 @@ def detect_skill_destinations(repo_root: Path) -> list[Path] | None:
         or (repo_root / "GEMINI.md").is_file()
     )
 
-
     if has_claude and not has_agents:
         return [claude_dest]
     if has_agents and not has_claude:
@@ -899,10 +898,35 @@ def _prune_empty_dir(path: Path) -> str | None:
     return None
 
 
+def _get_commit_env(root: Path) -> dict[str, str]:
+    """Return environment dict with fallback committer/author identity if git identity is unset."""
+    env = os.environ.copy()
+    author_ok = subprocess.run(
+        ["git", "var", "GIT_AUTHOR_IDENT"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).returncode == 0
+    committer_ok = subprocess.run(
+        ["git", "var", "GIT_COMMITTER_IDENT"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).returncode == 0
+    if not author_ok:
+        env.setdefault("GIT_AUTHOR_NAME", "Signoff Bot")
+        env.setdefault("GIT_AUTHOR_EMAIL", "signoff@example.com")
+    if not committer_ok:
+        env.setdefault("GIT_COMMITTER_NAME", "Signoff Bot")
+        env.setdefault("GIT_COMMITTER_EMAIL", "signoff@example.com")
+    return env
+
+
 def _rollback_scaffold(
     root: Path,
     original_branch: Optional[str],
-    is_unborn: bool,
     target_branch: str,
     scaffold_paths: list[Path],
     preexisting: set[Path],
@@ -1010,7 +1034,6 @@ def _rollback_scaffold(
         run_git(["checkout", "--detach"], "restore detached HEAD")
         run_git(["branch", "-D", target_branch], f"delete abandoned branch {target_branch}")
 
-
     rels = sorted({path.relative_to(root).as_posix() for path in scaffold_paths})
     try:
         status = subprocess.run(
@@ -1064,21 +1087,17 @@ def run_init(
             check=True,
             capture_output=True,
         )
-        env = os.environ.copy()
-        env.setdefault("GIT_AUTHOR_NAME", "Signoff Bot")
-        env.setdefault("GIT_AUTHOR_EMAIL", "signoff@example.com")
-        env.setdefault("GIT_COMMITTER_NAME", "Signoff Bot")
-        env.setdefault("GIT_COMMITTER_EMAIL", "signoff@example.com")
         c_proc = subprocess.run(
             ["git", "commit", "--allow-empty", "-m", f"chore: initialize {ctx.default_branch}"],
             cwd=root,
             capture_output=True,
             text=True,
-            env=env,
+            env=_get_commit_env(root),
         )
         if c_proc.returncode != 0:
             raise RuntimeError(f"Failed to create initial commit on {ctx.default_branch}: {c_proc.stderr.strip()}")
         ctx.current_branch = ctx.default_branch
+        ctx.is_unborn = False
 
     # Step 0.1: Clean tree guard
     ensure_clean_working_tree(root, allow_dirty=allow_dirty)
@@ -1120,7 +1139,6 @@ def run_init(
 
     if proc.returncode != 0:
         raise RuntimeError(f"Failed to create branch '{target_branch}': {proc.stderr.strip()}")
-
 
     # The branch now exists and later steps write files onto it. If any of them
     # fails (most commonly an offline vendor clone), roll the whole thing back
@@ -1186,6 +1204,7 @@ def run_init(
             cwd=root,
             capture_output=True,
             text=True,
+            env=_get_commit_env(root),
         )
         if commit_proc.returncode != 0:
             raise RuntimeError(f"Git commit failed: {commit_proc.stderr.strip()}")
@@ -1193,7 +1212,6 @@ def run_init(
         rollback_failures = _rollback_scaffold(
             root,
             ctx.current_branch,
-            ctx.is_unborn,
             target_branch,
             scaffold_paths,
             preexisting,

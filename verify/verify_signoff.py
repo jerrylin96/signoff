@@ -31,6 +31,7 @@ attestation you have not pushed yet survives a verifier run.
 """
 
 import argparse
+import glob
 import hashlib
 import os
 from pathlib import Path
@@ -299,18 +300,50 @@ CONV_ID_SAFE_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 def split_attestation_blocks(payload):
     """Split a note payload into individual attestation blocks (handles cat_sort_uniq concatenation)."""
     blocks = []
-    raw_blocks = re.split(r"(?=(?:^|\n)\[SIGNOFF |\n\n(?=Signoff-))", payload.strip())
-    for b in raw_blocks:
-        b = b.strip()
-        if b and ("Signoff-Spec-Version:" in b or SUBJECT_RE.search(b)):
-            blocks.append(b)
-    if not blocks and payload.strip():
-        blocks.append(payload.strip())
-    return blocks
+    current = []
+    has_reviewed_sha = False
+
+    for line in payload.splitlines():
+        is_new_block = False
+        if SUBJECT_RE.match(line) and current:
+            is_new_block = True
+        elif line.startswith("Signoff-Spec-Version:") and has_reviewed_sha:
+            is_new_block = True
+
+        if is_new_block:
+            block_text = "\n".join(current).strip()
+            if block_text and (
+                "Signoff-Spec-Version:" in block_text
+                or "Signoff-Status:" in block_text
+                or SUBJECT_RE.search(block_text)
+            ):
+                blocks.append(block_text)
+            current = [line]
+            has_reviewed_sha = False
+        else:
+            if "Signoff-Reviewed-Commit-SHA:" in line:
+                has_reviewed_sha = True
+            current.append(line)
+
+    if current:
+        block_text = "\n".join(current).strip()
+        if block_text and (
+            "Signoff-Spec-Version:" in block_text
+            or "Signoff-Status:" in block_text
+            or SUBJECT_RE.search(block_text)
+        ):
+            blocks.append(block_text)
+
+    return blocks if blocks else ([payload.strip()] if payload.strip() else [])
 
 
-def extract_attestation_trailers(repo, target):
+def extract_attestation_trailers(repo, target, seen=None, depth=0):
     """Find and return trailers dict for target commit or tree."""
+    if depth > 10:
+        return None
+    if seen is None:
+        seen = set()
+
     commit_proc = git(repo, "rev-parse", f"{target}^{{commit}}", check=False)
     if commit_proc.returncode != 0:
         return None
@@ -321,36 +354,51 @@ def extract_attestation_trailers(repo, target):
     # 1. Check target commit's own message
     if SUBJECT_RE.match(message) or "Signoff-Spec-Version:" in message:
         t = parse_trailers(message)
-        if t.get("Signoff-Status"):
-            return t
+        if not validate(t):
+            if commit in t.get("Signoff-Reviewed-Commit-SHA", []) or tree in t.get(
+                "Signoff-Reviewed-Tree-SHA", []
+            ):
+                return t
+            if SUBJECT_RE.match(message):
+                parent = git(repo, "rev-parse", f"{commit}~1", check=False).stdout.strip()
+                parent_tree = ""
+                if parent:
+                    parent_tree = git(repo, "rev-parse", f"{parent}^{{tree}}", check=False).stdout.strip()
+                if (
+                    parent
+                    and parent_tree
+                    and tree == parent_tree
+                    and t.get("Signoff-Reviewed-Commit-SHA", [None])[0] == parent
+                    and t.get("Signoff-Reviewed-Tree-SHA", [None])[0] == parent_tree
+                ):
+                    return t
 
     # 2. Check notes on commit and tree
-    candidates = []
     for note_target in (commit, tree):
         for payload in note_payloads(repo, note_target):
             for block in split_attestation_blocks(payload):
-                candidates.append(block)
-
-    for payload in candidates:
-        t = parse_trailers(payload)
-        if commit in t.get("Signoff-Reviewed-Commit-SHA", []) or tree in t.get(
-            "Signoff-Reviewed-Tree-SHA", []
-        ):
-            return t
+                t = parse_trailers(block)
+                if not validate(t) and (
+                    commit in t.get("Signoff-Reviewed-Commit-SHA", [])
+                    or tree in t.get("Signoff-Reviewed-Tree-SHA", [])
+                ):
+                    return t
 
     # 3. Check if target is a 2-parent merge commit
     parents = git(repo, "log", "-1", "--format=%P", commit, check=False).stdout.split()
-    if len(parents) == 2:
-        p2_trailers = extract_attestation_trailers(repo, parents[1])
+    if len(parents) == 2 and parents[1] not in seen:
+        seen.add(parents[1])
+        p2_trailers = extract_attestation_trailers(repo, parents[1], seen=seen, depth=depth + 1)
         if p2_trailers:
             return p2_trailers
 
-    # 4. Check history payloads
+    # 4. Fall back to scanning commit history and notes
     for _, payload in history_payloads(repo, commit):
         for block in split_attestation_blocks(payload):
             t = parse_trailers(block)
-            if commit in t.get("Signoff-Reviewed-Commit-SHA", []) or tree in t.get(
-                "Signoff-Reviewed-Tree-SHA", []
+            if not validate(t) and (
+                commit in t.get("Signoff-Reviewed-Commit-SHA", [])
+                or tree in t.get("Signoff-Reviewed-Tree-SHA", [])
             ):
                 return t
 
@@ -362,6 +410,10 @@ def check_audit(repo, target="HEAD", export_path=None):
     trailers = extract_attestation_trailers(repo, target)
     if not trailers:
         return False, [f"FAIL: No signoff attestation found for {target}"]
+
+    errs = validate(trailers)
+    if errs:
+        return False, [f"FAIL: Malformed signoff attestation on {target}: " + "; ".join(errs)]
 
     status = trailers.get("Signoff-Status", [""])[0]
     if status == "VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST":
@@ -435,9 +487,28 @@ def check_audit(repo, target="HEAD", export_path=None):
                 / "transcript.jsonl"
             )
         elif harness_id == "codex-cli":
-            transcript_path = home_dir / ".codex" / "sessions" / f"{conv_id}.jsonl"
+            base = os.environ.get("CODEX_HOME") or os.path.join(str(home_dir), ".codex")
+            sessions_dir = os.path.join(base, "sessions")
+            escaped_sid = glob.escape(conv_id)
+            pattern = os.path.join(glob.escape(sessions_dir), "**", f"rollout-*-{escaped_sid}.jsonl")
+            try:
+                matches = glob.glob(pattern, recursive=True)
+                if matches:
+                    newest = max(matches, key=lambda p: (os.path.getmtime(p), p))
+                    transcript_path = Path(newest)
+                else:
+                    transcript_path = Path(sessions_dir) / f"rollout-*-{conv_id}.jsonl"
+            except OSError:
+                transcript_path = Path(sessions_dir) / f"rollout-*-{conv_id}.jsonl"
         elif harness_id == "generic-file":
-            transcript_path = Path(conv_id)
+            candidate = Path(conv_id)
+            if candidate.is_file():
+                transcript_path = candidate
+            else:
+                return False, [
+                    "FAIL: For generic-file harnesses, the conversation ID is not a local file path. "
+                    "Please set SIGNOFF_TRANSCRIPT_FILE=<path/to/transcript.jsonl> to audit."
+                ]
         else:
             return False, [f"FAIL: Unsupported or unknown harness {harness_id!r}"]
 
@@ -493,12 +564,17 @@ def main(argv=None):
     if args.export and args.audit is None:
         p.error("--export requires --audit")
 
+    fetched = git(args.repo, "fetch", "origin", f"+{NOTES_REF}:{NOTES_FETCH_REF}", check=False)
+
     if args.audit is not None:
         ok, lines = check_audit(args.repo, target=args.audit, export_path=args.export)
+        if not ok and fetched.returncode != 0:
+            err = fetched.stderr.strip()
+            if err and "couldn't find remote ref" not in err:
+                lines.append(f"  warning: origin notes fetch failed ({err.splitlines()[-1]})")
         print("\n".join(lines))
         return 0 if ok else 1
 
-    fetched = git(args.repo, "fetch", "origin", f"+{NOTES_REF}:{NOTES_FETCH_REF}", check=False)
     if args.mode == "head":
         ok, lines = check_head(args.repo, args.target)
     else:
@@ -518,4 +594,3 @@ def main(argv=None):
 
 if __name__ == "__main__":
     sys.exit(main())
-

@@ -161,7 +161,6 @@ The verifier recomputes the SHA-256 digest and confirms it matches the git attes
 
 ## What a green badge means — and doesn't
 
-
 Green means: a human answered a Socratic interview about this code in their
 own words, acknowledged its named trade-offs and risks, and accepted
 accountability — and the record of that survives in git, tamper-evident.

@@ -1,4 +1,5 @@
 import hashlib
+import warnings
 
 import pytest
 
@@ -39,7 +40,8 @@ def test_prepare_resolves_shas_and_diff(scratch_repo):
 def test_resolve_reference_upstream_fallback(scratch_repo):
     repo = core.GitRepo(str(scratch_repo))
     # scratch_repo is on 'feature' off 'main', with no upstream configured
-    state = core.prepare(repo, "HEAD")
+    with pytest.warns(UserWarning, match="assuming base branch 'main'"):
+        state = core.prepare(repo, "HEAD")
     assert state.reference_ref == "main"
     assert state.base_sha == repo.out("rev-parse", "main")
 
@@ -50,9 +52,35 @@ def test_resolve_reference_master_fallback(tmp_path):
     git(path, "checkout", "-q", "-b", "feature")
     commit_file(path, "feat.txt", "feat\n", "feat commit")
     repo = core.GitRepo(str(path))
-    state = core.prepare(repo, "HEAD")
+    with pytest.warns(UserWarning, match="assuming base branch 'master'"):
+        state = core.prepare(repo, "HEAD")
     assert state.reference_ref == "master"
     assert state.base_sha == repo.out("rev-parse", "master")
+
+
+def test_resolve_reference_warns_when_true_base_is_not_main(tmp_path):
+    # Repo has main and develop; feature is branched off develop without upstream.
+    # Falling back to main must emit a prominent warning, and passing reference_ref explicitly avoids it.
+    path = init_repo(tmp_path / "repo_develop", branch="main")
+    commit_file(path, "base.txt", "base on main\n", "main commit")
+    git(path, "checkout", "-q", "-b", "develop")
+    commit_file(path, "dev.txt", "dev work\n", "dev commit")
+    git(path, "checkout", "-q", "-b", "feature")
+    commit_file(path, "feat.txt", "feat work\n", "feat commit")
+
+    repo = core.GitRepo(str(path))
+    # 1. Fallback emits prominent warning about assuming 'main'
+    with pytest.warns(UserWarning, match="No upstream configured for 'HEAD'; assuming base branch 'main'"):
+        state_fallback = core.prepare(repo, "HEAD")
+    assert state_fallback.reference_ref == "main"
+
+    # 2. Explicit reference_ref passes without warning
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        state_explicit = core.prepare(repo, "HEAD", reference_ref="develop")
+    assert state_explicit.reference_ref == "develop"
+    assert state_explicit.base_sha == repo.out("rev-parse", "develop")
+
 
 
 def test_prepare_without_reference_and_no_upstream_or_default_branch_errors(tmp_path):
@@ -68,6 +96,16 @@ def test_resolve_reference_skips_target_branch_when_on_main_without_upstream(tmp
     commit_file(path, "base.txt", "base\n", "base commit")
     repo = core.GitRepo(str(path))
     # On main with no upstream and no other candidate branch: should refuse to diff main against main
+    with pytest.raises(core.SignoffError, match="reference_ref explicitly"):
+        core.prepare(repo, "HEAD")
+
+
+def test_resolve_reference_on_main_does_not_diff_against_master(tmp_path):
+    path = init_repo(tmp_path / "repo_both", branch="main")
+    commit_file(path, "base.txt", "base\n", "base commit")
+    git(path, "branch", "master")
+    repo = core.GitRepo(str(path))
+    # On main with master also existing, should refuse to diff main against master
     with pytest.raises(core.SignoffError, match="reference_ref explicitly"):
         core.prepare(repo, "HEAD")
 

@@ -5,6 +5,7 @@ No MCP dependency — pure stdlib, fully testable against scratch repos.
 
 import re
 import subprocess
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -101,17 +102,23 @@ def _resolve_reference(repo: GitRepo, target_ref: str, reference_ref: str | None
     if proc.returncode == 0 and proc.stdout.strip():
         return proc.stdout.strip()
     target_full = repo.git("rev-parse", "--symbolic-full-name", target_ref, check=False).stdout.strip()
-    for candidate in ("main", "master"):
-        cand_ref = f"refs/heads/{candidate}"
-        if cand_ref != target_full:
-            check_proc = repo.git("rev-parse", "--verify", cand_ref, check=False)
-            if check_proc.returncode == 0:
-                return candidate
+    if target_full not in ("refs/heads/main", "refs/heads/master"):
+        for candidate in ("main", "master"):
+            cand_ref = f"refs/heads/{candidate}"
+            if cand_ref != target_full:
+                check_proc = repo.git("rev-parse", "--verify", cand_ref, check=False)
+                if check_proc.returncode == 0:
+                    warnings.warn(
+                        f"No upstream configured for '{target_ref}'; assuming base branch '{candidate}'. "
+                        "If this is incorrect, pass reference_ref explicitly.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    return candidate
     raise SignoffError(
         f"No upstream configured for '{target_ref}'; pass reference_ref explicitly "
         "(no hardcoded remote assumptions per GSA §2.3)."
     )
-
 
 
 def prepare(

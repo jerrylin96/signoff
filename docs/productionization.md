@@ -267,7 +267,6 @@ Recorded so they never need re-derivation; each names its future fix.
   one move: the clone now happens at the pinned tag `SKILL_SOURCE_REF`
   (`init-v5`, served by the install snippets and created by tag.yml's PINS
   list — `test_skill_source_ref_pin_consistency` fails if the three ever
-
   drift), and every vendored copy carries a `VENDORED-FROM` stamp (source,
   ref, commit; `ref: local` for `--skill-source` installs) — self-describing
   staleness. HARNESSES.md caveat updated in the same change.

@@ -1122,7 +1122,6 @@ def test_rollback_prunes_empty_parents(temp_git_repo):
     init._rollback_scaffold(
         temp_git_repo,
         original_branch="main",
-        is_unborn=False,
         target_branch="signoff/init",
         scaffold_paths=scaffold_paths,
         preexisting=preexisting,
@@ -1148,7 +1147,6 @@ def test_rollback_preserves_nonempty_parents(temp_git_repo):
     init._rollback_scaffold(
         temp_git_repo,
         original_branch="main",
-        is_unborn=False,
         target_branch="signoff/init",
         scaffold_paths=scaffold_paths,
         preexisting=preexisting,
@@ -1474,7 +1472,6 @@ def test_rollback_collects_git_invocation_errors(temp_git_repo):
         failures = init._rollback_scaffold(
             temp_git_repo,
             original_branch="main",
-            is_unborn=False,
             target_branch="signoff/init",
             scaffold_paths=[temp_git_repo / "README.md"],
             preexisting={temp_git_repo / "README.md"},
@@ -1607,6 +1604,8 @@ def test_unborn_repo_auto_commit(tmp_path):
     repo_dir = tmp_path / "unborn_auto_commit"
     repo_dir.mkdir()
     subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Configured Author"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "author@example.com"], cwd=repo_dir, check=True)
     subprocess.run(["git", "remote", "add", "origin", "https://github.com/example-org/unborn-test.git"], cwd=repo_dir, check=True)
 
     res = init.run_init(
@@ -1618,15 +1617,49 @@ def test_unborn_repo_auto_commit(tmp_path):
     assert res.success is True
     assert res.branch == "signoff/init"
 
-    # Main branch should now have the initial empty commit
+    # Main branch should now have the initial empty commit with configured author preserved
     main_commits = subprocess.check_output(["git", "log", "main", "--oneline"], cwd=repo_dir, text=True).splitlines()
     assert len(main_commits) == 1
     assert "chore: initialize main" in main_commits[0]
+    main_author = subprocess.check_output(["git", "log", "main", "-1", "--format=%an <%ae>"], cwd=repo_dir, text=True).strip()
+    assert main_author == "Configured Author <author@example.com>"
 
-    # signoff/init should have 2 commits: initial commit + scaffold commit
+    # signoff/init should have 2 commits: initial commit + scaffold commit with configured author
     branch_commits = subprocess.check_output(["git", "log", "signoff/init", "--oneline"], cwd=repo_dir, text=True).splitlines()
     assert len(branch_commits) == 2
     assert "chore: scaffold git signoff attestation" in branch_commits[0]
+    branch_author = subprocess.check_output(["git", "log", "signoff/init", "-1", "--format=%an <%ae>"], cwd=repo_dir, text=True).strip()
+    assert branch_author == "Configured Author <author@example.com>"
+
+
+def test_unborn_repo_fallback_to_signoff_bot_when_identity_unset(tmp_path, monkeypatch):
+    repo_dir = tmp_path / "unborn_unset_identity"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "remote", "add", "origin", "https://github.com/example-org/unborn-fallback.git"], cwd=repo_dir, check=True)
+
+    # Clean git identity env to simulate unconfigured container/CI
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.delenv("GIT_AUTHOR_NAME", raising=False)
+    monkeypatch.delenv("GIT_AUTHOR_EMAIL", raising=False)
+    monkeypatch.delenv("GIT_COMMITTER_NAME", raising=False)
+    monkeypatch.delenv("GIT_COMMITTER_EMAIL", raising=False)
+
+    res = init.run_init(
+        repo_root=repo_dir,
+        non_interactive=True,
+        skill_source=SKILL_SRC,
+        skip_ruleset=True,
+    )
+    assert res.success is True
+
+    main_author = subprocess.check_output(["git", "log", "main", "-1", "--format=%an <%ae>"], cwd=repo_dir, text=True).strip()
+    assert main_author == "Signoff Bot <signoff@example.com>"
+
+    branch_author = subprocess.check_output(["git", "log", "signoff/init", "-1", "--format=%an <%ae>"], cwd=repo_dir, text=True).strip()
+    assert branch_author == "Signoff Bot <signoff@example.com>"
 
 
 @pytest.mark.parametrize("allow_dirty", [False, True])
@@ -1634,6 +1667,8 @@ def test_unborn_repo_with_staged_changes_fails(tmp_path, allow_dirty):
     repo_dir = tmp_path / f"unborn_staged_{allow_dirty}"
     repo_dir.mkdir()
     subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
     (repo_dir / "unreviewed.txt").write_text("unreviewed")
     subprocess.run(["git", "add", "unreviewed.txt"], cwd=repo_dir, check=True)
 
@@ -1651,6 +1686,8 @@ def test_unborn_repo_rollback_on_failure(tmp_path):
     repo_dir = tmp_path / "unborn_rollback"
     repo_dir.mkdir()
     subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
     bad_skill_src = tmp_path / "nonexistent_skills_dir"
 
     with pytest.raises(RuntimeError):
@@ -1738,6 +1775,8 @@ def test_no_remote_next_steps(tmp_path, monkeypatch, capsys):
     repo_dir = tmp_path / "local_only"
     repo_dir.mkdir()
     subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
     (repo_dir / "README.md").write_text("# Local\n")
     subprocess.run(["git", "add", "README.md"], cwd=repo_dir, check=True)
     subprocess.run(["git", "commit", "-m", "initial"], cwd=repo_dir, check=True)
@@ -1754,6 +1793,8 @@ def test_with_remote_next_steps(tmp_path, monkeypatch, capsys):
     repo_dir = tmp_path / "with_remote"
     repo_dir.mkdir()
     subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
     subprocess.run(["git", "remote", "add", "origin", "https://github.com/example-org/with-remote.git"], cwd=repo_dir, check=True)
     (repo_dir / "README.md").write_text("# Remote\n")
     subprocess.run(["git", "add", "README.md"], cwd=repo_dir, check=True)
