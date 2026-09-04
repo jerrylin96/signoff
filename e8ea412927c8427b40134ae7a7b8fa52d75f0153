@@ -1,0 +1,16 @@
+[SIGNOFF e8ea412]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-09-04T02:12:52Z
+Signoff-Base-SHA: ad7cde8e57c9c28f381442ee48124fadf58d0835
+Signoff-Reviewed-Commit-SHA: e8ea412927c8427b40134ae7a7b8fa52d75f0153
+Signoff-Reviewed-Tree-SHA: d3770e61c2bac51844aea51065166a21d928b5bb
+Signoff-Harness-ID: antigravity-cli
+Signoff-Conversation-ID: 81763218-7a4d-4e00-9bb5-357b6adc4c34
+Signoff-Transcript-Digest: sha256:1a2b8a1f090ec60e5ad387cb810133f0c83abde23c83fdaf0ad9fbba36b38428
+Signoff-Transcript-Bytes: 1632179
+Signoff-Tradeoff: downstream asymmetry for users not yet upgraded to init-v4 multi-harness vendoring
+Signoff-Risk: non-production-grade dogfooding with potential multi-harness drift across .claude and .agents
+Signoff-Verified-By: jerrylin247365@gmail.com
+Signoff-Agent: harness=antigravity-cli/N/A model=gemini-3.8-flash reasoning=N/A interview=standard/software-general
