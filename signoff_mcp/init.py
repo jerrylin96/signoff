@@ -578,6 +578,37 @@ def vendor_skill(
 
 
 
+def single_destination_hint(
+    repo_root: Path,
+    destinations: list[Path],
+    skill_target: str,
+) -> Optional[str]:
+    """Return a one-line hint when auto-detection resolved to a single destination.
+
+    Auto-detection infers the harness from repository markers, so a repo that
+    carries a `.claude/` directory only for settings would receive a Claude-only
+    install that Codex, Cursor, or Antigravity never load. The summary already
+    prints where the skill landed; this names the destination that was *not*
+    chosen and the flag that adds it, so the outcome is visible rather than
+    discovered when `/signoff` fails to appear in another harness. Returns None
+    when the user chose explicitly or when every candidate was installed.
+    """
+    if skill_target != "auto" or len(destinations) != 1:
+        return None
+    chosen = _normalize_skill_destinations(repo_root, destinations)[0]
+    chosen_rel = chosen.relative_to(repo_root).as_posix()
+    others = [rel for rel in SKILL_DEST_CANDIDATES if rel != chosen_rel]
+    if not others:
+        return None
+    other_rel = others[0]
+    other_flag = "agents" if other_rel.startswith(".agents/") else "claude"
+    return (
+        f"Auto-detected a single harness destination ({chosen_rel}); agents that read "
+        f"{other_rel} will not see /signoff. Re-run with --skill-target {other_flag} "
+        f"(or both) to add it."
+    )
+
+
 def inject_readme_badge(repo_root: Path, slug: str) -> Path:
     readme = repo_root / "README.md"
     badge_md = f"[![attested by humans](https://github.com/{slug}/actions/workflows/signoff.yml/badge.svg)](https://github.com/{slug}/actions/workflows/signoff.yml)"
@@ -1201,6 +1232,9 @@ def main() -> int:
             pass
         dests_str = ", ".join(str(d.relative_to(root_dir)) for d in res.destinations) or ".claude/skills/signoff"
         print(f"[4/5] 📝 Scaffolded workflow, profile, and vendored the /signoff skill into {dests_str}.")
+        hint = single_destination_hint(root_dir, res.destinations, args.skill_target)
+        if hint:
+            print(f"  ℹ️  {hint}")
         
         # Surfacing ruleset status
         if res.ruleset.status == "created":

@@ -1573,3 +1573,28 @@ def test_rollback_pre_scaffold_failure_preserves_destination_and_restores_branch
 
     status_repo = subprocess.check_output(["git", "status", "--porcelain"], cwd=temp_git_repo, text=True)
     assert status_repo.strip() == ""
+
+# 6. Single-destination auto-detection hint
+def test_single_destination_hint_auto_claude_only(tmp_path):
+    claude = tmp_path / ".claude" / "skills" / "signoff"
+    hint = init.single_destination_hint(tmp_path, [claude], "auto")
+    assert hint is not None
+    assert ".claude/skills/signoff" in hint
+    assert ".agents/skills/signoff" in hint
+    assert "--skill-target agents" in hint
+
+
+def test_single_destination_hint_auto_agents_only(tmp_path):
+    agents = tmp_path / ".agents" / "skills" / "signoff"
+    hint = init.single_destination_hint(tmp_path, [agents], "auto")
+    assert hint is not None
+    assert "--skill-target claude" in hint
+
+
+def test_single_destination_hint_silent_when_both_or_explicit(tmp_path):
+    claude = tmp_path / ".claude" / "skills" / "signoff"
+    agents = tmp_path / ".agents" / "skills" / "signoff"
+    assert init.single_destination_hint(tmp_path, [claude, agents], "auto") is None
+    # An explicit choice is the user's decision; no hint second-guesses it.
+    assert init.single_destination_hint(tmp_path, [claude], "claude") is None
+    assert init.single_destination_hint(tmp_path, [agents], "agents") is None
