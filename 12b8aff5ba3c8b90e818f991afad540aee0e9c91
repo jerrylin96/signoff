@@ -1,0 +1,18 @@
+[SIGNOFF e36b6d0]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-08-30T20:06:56Z
+Signoff-Base-SHA: ff20f22195dbabca0b8639e00234c2f45535f71d
+Signoff-Reviewed-Commit-SHA: e36b6d04890e79cc63077f8203b8fc3cc2dfe397
+Signoff-Reviewed-Tree-SHA: 12b8aff5ba3c8b90e818f991afad540aee0e9c91
+Signoff-Harness-ID: claude-code
+Signoff-Conversation-ID: 01f41298-2e80-5316-bf8a-b2cb25050321
+Signoff-Transcript-Digest: sha256:714d37ca2ce01f7e79a9a501206b983194d4c97cbcc9365962eaeb090a85b1d8
+Signoff-Transcript-Bytes: 1644207
+Signoff-Tradeoff: single per-repo vendored channel replaces account-wide plugin and zip installs; retired-channel installs are orphaned without notification (accepted pre-production break)
+Signoff-Tradeoff: vendored copies never self-update or notify; CI verifier pinned to immutable tag verify-v1.2, updated only by editing the pin or re-running the initializer
+Signoff-Risk: initializer vendors current default-branch skill content regardless of the downloaded script tag, and vendored copies carry no version marker (silent version opacity; fix deferred and logged)
+Signoff-Risk: offline initializer runs abort loudly but leave a partially scaffolded signoff/init branch with workflow and profile unstaged; --skill-source is the offline path
+Signoff-Verified-By: jlin404@bu.edu
+Signoff-Agent: harness=claude-code/2.1.42 model=claude-fable-5 reasoning=high interview=skeptical/software-general

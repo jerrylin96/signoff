@@ -1,0 +1,16 @@
+[SIGNOFF 97f41d3]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-09-01T21:27:18Z
+Signoff-Base-SHA: 37c1011c8cb77fd6df64bc93b5308986db0d7711
+Signoff-Reviewed-Commit-SHA: 97f41d331c4080ac9dbc3c4ded3f3d4ee2bbaa7a
+Signoff-Reviewed-Tree-SHA: 5051b64c81bb4bb7097d8560112e3a924cff86fe
+Signoff-Harness-ID: claude-code
+Signoff-Conversation-ID: 711c20a5-7dc5-5603-9888-6c45d757f5ac
+Signoff-Transcript-Digest: sha256:a264eca9070d6e99a6b66216c938b41bdde7e46817ca85c25ba91463f62b6e9e
+Signoff-Transcript-Bytes: 849671
+Signoff-Tradeoff: Rollback is best-effort and confined to local git/filesystem state; an idempotent GitHub ruleset created via gh before a later failure is intentionally left in place.
+Signoff-Risk: On the rollback path a pre-existing uncommitted edit to an allowlisted signoff-prefixed file (e.g. README) is reverted to HEAD and lost; exposure is narrow (dirty allowlisted file plus mid-run failure) and accepted.
+Signoff-Verified-By: jlin404@bu.edu
+Signoff-Agent: harness=claude-code/2.1.42 model=redacted reasoning=xhigh interview=skeptical/software-general

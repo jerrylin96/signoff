@@ -1,0 +1,21 @@
+[SIGNOFF dcd2a1b]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-09-04T15:55:13Z
+Signoff-Base-SHA: ad7cde8e57c9c28f381442ee48124fadf58d0835
+Signoff-Reviewed-Commit-SHA: dcd2a1bfb5a77201ebffbb8d2ed21cad92a5922e
+Signoff-Reviewed-Tree-SHA: 3ccf22bd1ac7a9a0018479c92790e97ebc6d201f
+Signoff-Harness-ID: claude-code
+Signoff-Conversation-ID: c0946aa7-3bd3-5c0e-8fda-2c84ab2514aa
+Signoff-Transcript-Digest: sha256:c21bd3177594a4f318302b0bcd7ad00b2b08220fd6701def867a6ba3dff8d470
+Signoff-Transcript-Bytes: 533190
+Signoff-Tradeoff: --allow-dirty silently discards uncommitted edits inside a managed skill destination; the flag is the consent, and a pre-delete listing is deferred to init-v5.
+Signoff-Tradeoff: Explicit --skill-target choices union with existing installs and can never remove one, preventing version drift between vendored copies.
+Signoff-Tradeoff: Single-destination auto-detection is surfaced only by the summary line and the new hint; nothing verifies that a harness actually loads the folder.
+Signoff-Risk: The Codex adapter's recursive rollout glob walks every stored session per signoff; accepted below roughly ten thousand sessions.
+Signoff-Risk: A missing or renamed Codex rollout downgrades the attestation to VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST and requires a second confirmation.
+Signoff-Risk: The init-v4 pin resolves only after merge to main runs tag.yml; until then the branch initializer fails loudly and rolls back.
+Signoff-Risk: Commits between cfd3bed and 7cac13d were not probed in this interview and rely on prior attestations ee58954 and 6370e20.
+Signoff-Verified-By: jlin404@bu.edu
+Signoff-Agent: harness=claude-code/2.1.42 model=claude-fable-5-1 reasoning=high interview=skeptical/software-general
