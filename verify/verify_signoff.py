@@ -31,6 +31,10 @@ attestation you have not pushed yet survives a verifier run.
 """
 
 import argparse
+import glob
+import hashlib
+import os
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -258,8 +262,8 @@ def check_history(repo, ref, require):
     seen = set()
     payloads = history_payloads(repo, ref)
     annotated = []
-    for ref in (NOTES_REF, NOTES_FETCH_REF):
-        listing = git(repo, "notes", f"--ref={ref}", "list", check=False)
+    for n_ref in (NOTES_REF, NOTES_FETCH_REF):
+        listing = git(repo, "notes", f"--ref={n_ref}", "list", check=False)
         if listing.returncode != 0:
             continue
         for entry in listing.stdout.split("\n"):
@@ -267,7 +271,8 @@ def check_history(repo, ref, require):
                 annotated.append(entry.split()[1])
     for target in annotated:
         for payload in note_payloads(repo, target):
-            payloads.append((f"note on {target[:7]}", payload))
+            for block in split_attestation_blocks(payload):
+                payloads.append((f"note on {target[:7]}", block))
     for source, payload in payloads:
         trailers = parse_trailers(payload)
         problems = validate(trailers)
@@ -289,15 +294,287 @@ def check_history(repo, ref, require):
     return valid >= require, lines
 
 
+CONV_ID_SAFE_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
+
+
+def split_attestation_blocks(payload):
+    """Split a note payload into individual attestation blocks (handles cat_sort_uniq concatenation)."""
+    blocks = []
+    current = []
+    has_reviewed_sha = False
+
+    for line in payload.splitlines():
+        is_new_block = False
+        if SUBJECT_RE.match(line) and current:
+            is_new_block = True
+        elif line.startswith("Signoff-Spec-Version:") and has_reviewed_sha:
+            is_new_block = True
+
+        if is_new_block:
+            block_text = "\n".join(current).strip()
+            if block_text and (
+                "Signoff-Spec-Version:" in block_text
+                or "Signoff-Status:" in block_text
+                or SUBJECT_RE.search(block_text)
+            ):
+                blocks.append(block_text)
+            current = [line]
+            has_reviewed_sha = False
+        else:
+            if "Signoff-Reviewed-Commit-SHA:" in line:
+                has_reviewed_sha = True
+            current.append(line)
+
+    if current:
+        block_text = "\n".join(current).strip()
+        if block_text and (
+            "Signoff-Spec-Version:" in block_text
+            or "Signoff-Status:" in block_text
+            or SUBJECT_RE.search(block_text)
+        ):
+            blocks.append(block_text)
+
+    return blocks if blocks else ([payload.strip()] if payload.strip() else [])
+
+
+def extract_attestation_trailers(repo, target, seen=None, depth=0):
+    """Find and return trailers dict for target commit or tree."""
+    if depth > 10:
+        return None
+    if seen is None:
+        seen = set()
+
+    commit_proc = git(repo, "rev-parse", f"{target}^{{commit}}", check=False)
+    if commit_proc.returncode != 0:
+        return None
+    commit = commit_proc.stdout.strip()
+    tree = git(repo, "rev-parse", f"{commit}^{{tree}}", check=False).stdout.strip()
+    message = git(repo, "log", "-1", "--format=%B", commit, check=False).stdout
+
+    # 1. Check target commit's own message
+    if SUBJECT_RE.match(message) or "Signoff-Spec-Version:" in message:
+        t = parse_trailers(message)
+        if not validate(t):
+            if commit in t.get("Signoff-Reviewed-Commit-SHA", []) or tree in t.get(
+                "Signoff-Reviewed-Tree-SHA", []
+            ):
+                return t
+            if SUBJECT_RE.match(message):
+                parent = git(repo, "rev-parse", f"{commit}~1", check=False).stdout.strip()
+                parent_tree = ""
+                if parent:
+                    parent_tree = git(repo, "rev-parse", f"{parent}^{{tree}}", check=False).stdout.strip()
+                if (
+                    parent
+                    and parent_tree
+                    and tree == parent_tree
+                    and t.get("Signoff-Reviewed-Commit-SHA", [None])[0] == parent
+                    and t.get("Signoff-Reviewed-Tree-SHA", [None])[0] == parent_tree
+                ):
+                    return t
+
+    # 2. Check notes on commit and tree
+    for note_target in (commit, tree):
+        for payload in note_payloads(repo, note_target):
+            for block in split_attestation_blocks(payload):
+                t = parse_trailers(block)
+                if not validate(t) and (
+                    commit in t.get("Signoff-Reviewed-Commit-SHA", [])
+                    or tree in t.get("Signoff-Reviewed-Tree-SHA", [])
+                ):
+                    return t
+
+    # 3. Check if target is a 2-parent merge commit
+    parents = git(repo, "log", "-1", "--format=%P", commit, check=False).stdout.split()
+    if len(parents) == 2 and parents[1] not in seen:
+        seen.add(parents[1])
+        p2_trailers = extract_attestation_trailers(repo, parents[1], seen=seen, depth=depth + 1)
+        if p2_trailers:
+            return p2_trailers
+
+    # 4. Fall back to scanning commit history and notes
+    for _, payload in history_payloads(repo, commit):
+        for block in split_attestation_blocks(payload):
+            t = parse_trailers(block)
+            if not validate(t) and (
+                commit in t.get("Signoff-Reviewed-Commit-SHA", [])
+                or tree in t.get("Signoff-Reviewed-Tree-SHA", [])
+            ):
+                return t
+
+    return None
+
+
+def check_audit(repo, target="HEAD", export_path=None):
+    """Audit local transcript against signoff trailers on target."""
+    trailers = extract_attestation_trailers(repo, target)
+    if not trailers:
+        return False, [f"FAIL: No signoff attestation found for {target}"]
+
+    errs = validate(trailers)
+    if errs:
+        return False, [f"FAIL: Malformed signoff attestation on {target}: " + "; ".join(errs)]
+
+    status = trailers.get("Signoff-Status", [""])[0]
+    if status == "VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST":
+        return True, [
+            f"[NOTICE] Attestation for {target} verified without transcript digest (status: {status})."
+        ]
+
+    conv_id = trailers.get("Signoff-Conversation-ID", [""])[0]
+    if (
+        not conv_id
+        or not CONV_ID_SAFE_RE.match(conv_id)
+        or ".." in conv_id
+        or conv_id.startswith(".")
+    ):
+        return False, [f"FAIL: Malformed or unsafe Signoff-Conversation-ID {conv_id!r}"]
+
+    expected_digest = trailers.get("Signoff-Transcript-Digest", [""])[0]
+    bytes_str = trailers.get("Signoff-Transcript-Bytes", [""])[0]
+    harness_id = trailers.get("Signoff-Harness-ID", [""])[0]
+
+    try:
+        nbytes = int(bytes_str)
+        if nbytes < 0:
+            raise ValueError()
+    except (ValueError, TypeError):
+        return False, [f"FAIL: Malformed Signoff-Transcript-Bytes {bytes_str!r}"]
+
+    # Resolve transcript path
+    if os.environ.get("SIGNOFF_TRANSCRIPT_FILE"):
+        transcript_path = Path(os.environ["SIGNOFF_TRANSCRIPT_FILE"])
+    else:
+        home_dir = Path(os.environ.get("HOME") or os.environ.get("USERPROFILE") or Path.home())
+        if harness_id == "claude-code":
+            proc = git(repo, "rev-parse", "--show-toplevel", check=False)
+            if proc.returncode == 0 and proc.stdout.strip():
+                root = proc.stdout.strip()
+            else:
+                proc_common = git(repo, "rev-parse", "--git-common-dir", check=False)
+                if proc_common.returncode == 0 and proc_common.stdout.strip():
+                    root = proc_common.stdout.strip()
+                else:
+                    root = os.path.abspath(repo)
+            try:
+                root = str(Path(root).resolve())
+            except Exception:
+                pass
+            slug = root.replace("/", "-")
+            transcript_path = home_dir / ".claude" / "projects" / slug / f"{conv_id}.jsonl"
+            if not transcript_path.is_file():
+                proc_common = git(repo, "rev-parse", "--git-common-dir", check=False)
+                if proc_common.returncode == 0 and proc_common.stdout.strip():
+                    common_dir = proc_common.stdout.strip()
+                    main_root = os.path.abspath(os.path.join(root, common_dir, os.pardir))
+                    try:
+                        main_root = str(Path(main_root).resolve())
+                    except Exception:
+                        pass
+                    fallback_slug = main_root.replace("/", "-")
+                    fallback_path = home_dir / ".claude" / "projects" / fallback_slug / f"{conv_id}.jsonl"
+                    if fallback_path.is_file():
+                        transcript_path = fallback_path
+        elif harness_id == "antigravity-cli":
+            transcript_path = (
+                home_dir
+                / ".gemini"
+                / "antigravity-cli"
+                / "brain"
+                / conv_id
+                / ".system_generated"
+                / "logs"
+                / "transcript.jsonl"
+            )
+        elif harness_id == "codex-cli":
+            base = os.environ.get("CODEX_HOME") or os.path.join(str(home_dir), ".codex")
+            sessions_dir = os.path.join(base, "sessions")
+            escaped_sid = glob.escape(conv_id)
+            pattern = os.path.join(glob.escape(sessions_dir), "**", f"rollout-*-{escaped_sid}.jsonl")
+            try:
+                matches = glob.glob(pattern, recursive=True)
+                if matches:
+                    newest = max(matches, key=lambda p: (os.path.getmtime(p), p))
+                    transcript_path = Path(newest)
+                else:
+                    transcript_path = Path(sessions_dir) / f"rollout-*-{conv_id}.jsonl"
+            except OSError:
+                transcript_path = Path(sessions_dir) / f"rollout-*-{conv_id}.jsonl"
+        elif harness_id == "generic-file":
+            candidate = Path(conv_id)
+            if candidate.is_file():
+                transcript_path = candidate
+            else:
+                return False, [
+                    "FAIL: For generic-file harnesses, the conversation ID is not a local file path. "
+                    "Please set SIGNOFF_TRANSCRIPT_FILE=<path/to/transcript.jsonl> to audit."
+                ]
+        else:
+            return False, [f"FAIL: Unsupported or unknown harness {harness_id!r}"]
+
+    if not transcript_path.is_file():
+        return False, [f"FAIL: Transcript file not found at {transcript_path}"]
+
+    raw_bytes = transcript_path.read_bytes()[:nbytes]
+    actual_digest = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
+
+    if actual_digest != expected_digest:
+        return False, [
+            f"❌ MISMATCH: Transcript SHA-256 {actual_digest} does not match trailer {expected_digest}"
+        ]
+
+    if export_path:
+        export_file = Path(export_path)
+        export_file.parent.mkdir(parents=True, exist_ok=True)
+        export_file.write_bytes(raw_bytes)
+
+    lines = [
+        f"✅ VALID MATCH: Transcript SHA-256 matches {expected_digest}",
+        f"  Harness: {harness_id}",
+        f"  Conversation ID: {conv_id}",
+        f"  Bytes verified: {len(raw_bytes)}",
+    ]
+    if export_path:
+        lines.append(f"  Exported snapshot to: {export_path}")
+    return True, lines
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="Verify Git Signoff Attestations (GSA v1.0)")
     p.add_argument("--repo", default=".", help="repository to verify")
     p.add_argument("--mode", choices=("head", "history"), default="head")
     p.add_argument("--target", default="HEAD", help="commit (head mode) or ref (history mode)")
     p.add_argument("--require", type=int, default=1, help="history mode: minimum valid attestations")
+    p.add_argument(
+        "--audit",
+        nargs="?",
+        const="HEAD",
+        default=None,
+        metavar="COMMIT",
+        help="audit local transcript against signoff trailers",
+    )
+    p.add_argument(
+        "--export",
+        default=None,
+        metavar="PATH",
+        help="export audited transcript snapshot to path (requires --audit)",
+    )
     args = p.parse_args(argv)
 
+    if args.export and args.audit is None:
+        p.error("--export requires --audit")
+
     fetched = git(args.repo, "fetch", "origin", f"+{NOTES_REF}:{NOTES_FETCH_REF}", check=False)
+
+    if args.audit is not None:
+        ok, lines = check_audit(args.repo, target=args.audit, export_path=args.export)
+        if not ok and fetched.returncode != 0:
+            err = fetched.stderr.strip()
+            if err and "couldn't find remote ref" not in err:
+                lines.append(f"  warning: origin notes fetch failed ({err.splitlines()[-1]})")
+        print("\n".join(lines))
+        return 0 if ok else 1
+
     if args.mode == "head":
         ok, lines = check_head(args.repo, args.target)
     else:

@@ -221,8 +221,9 @@ def test_skill_source_ref_pin_consistency():
     import re
 
     repo_root = Path(__file__).parent.parent
-    assert init.SKILL_SOURCE_REF == "init-v4", f"Expected init-v4, got {init.SKILL_SOURCE_REF}"
+    assert init.SKILL_SOURCE_REF == "init-v5", f"Expected init-v5, got {init.SKILL_SOURCE_REF}"
     ref = init.SKILL_SOURCE_REF
+
 
     tag_wf = (repo_root / ".github" / "workflows" / "tag.yml").read_text(encoding="utf-8")
     m = re.search(r"^\s*PINS:\s*(.+?)\s*$", tag_wf, re.MULTILINE)
@@ -1121,7 +1122,6 @@ def test_rollback_prunes_empty_parents(temp_git_repo):
     init._rollback_scaffold(
         temp_git_repo,
         original_branch="main",
-        is_unborn=False,
         target_branch="signoff/init",
         scaffold_paths=scaffold_paths,
         preexisting=preexisting,
@@ -1147,7 +1147,6 @@ def test_rollback_preserves_nonempty_parents(temp_git_repo):
     init._rollback_scaffold(
         temp_git_repo,
         original_branch="main",
-        is_unborn=False,
         target_branch="signoff/init",
         scaffold_paths=scaffold_paths,
         preexisting=preexisting,
@@ -1473,7 +1472,6 @@ def test_rollback_collects_git_invocation_errors(temp_git_repo):
         failures = init._rollback_scaffold(
             temp_git_repo,
             original_branch="main",
-            is_unborn=False,
             target_branch="signoff/init",
             scaffold_paths=[temp_git_repo / "README.md"],
             preexisting={temp_git_repo / "README.md"},
@@ -1598,3 +1596,216 @@ def test_single_destination_hint_silent_when_both_or_explicit(tmp_path):
     # An explicit choice is the user's decision; no hint second-guesses it.
     assert init.single_destination_hint(tmp_path, [claude], "claude") is None
     assert init.single_destination_hint(tmp_path, [agents], "agents") is None
+
+
+# --- Greenfield Onboarding & Policy A Hardening Tests ---
+
+def test_unborn_repo_auto_commit(tmp_path):
+    repo_dir = tmp_path / "unborn_auto_commit"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Configured Author"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "author@example.com"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "remote", "add", "origin", "https://github.com/example-org/unborn-test.git"], cwd=repo_dir, check=True)
+
+    res = init.run_init(
+        repo_root=repo_dir,
+        non_interactive=True,
+        skill_source=SKILL_SRC,
+        skip_ruleset=True,
+    )
+    assert res.success is True
+    assert res.branch == "signoff/init"
+
+    # Main branch should now have the initial empty commit with configured author preserved
+    main_commits = subprocess.check_output(["git", "log", "main", "--oneline"], cwd=repo_dir, text=True).splitlines()
+    assert len(main_commits) == 1
+    assert "chore: initialize main" in main_commits[0]
+    main_author = subprocess.check_output(["git", "log", "main", "-1", "--format=%an <%ae>"], cwd=repo_dir, text=True).strip()
+    assert main_author == "Configured Author <author@example.com>"
+
+    # signoff/init should have 2 commits: initial commit + scaffold commit with configured author
+    branch_commits = subprocess.check_output(["git", "log", "signoff/init", "--oneline"], cwd=repo_dir, text=True).splitlines()
+    assert len(branch_commits) == 2
+    assert "chore: scaffold git signoff attestation" in branch_commits[0]
+    branch_author = subprocess.check_output(["git", "log", "signoff/init", "-1", "--format=%an <%ae>"], cwd=repo_dir, text=True).strip()
+    assert branch_author == "Configured Author <author@example.com>"
+
+
+def test_unborn_repo_fallback_to_signoff_bot_when_identity_unset(tmp_path, monkeypatch):
+    repo_dir = tmp_path / "unborn_unset_identity"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "remote", "add", "origin", "https://github.com/example-org/unborn-fallback.git"], cwd=repo_dir, check=True)
+
+    # Clean git identity env to simulate unconfigured container/CI
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.delenv("GIT_AUTHOR_NAME", raising=False)
+    monkeypatch.delenv("GIT_AUTHOR_EMAIL", raising=False)
+    monkeypatch.delenv("GIT_COMMITTER_NAME", raising=False)
+    monkeypatch.delenv("GIT_COMMITTER_EMAIL", raising=False)
+
+    res = init.run_init(
+        repo_root=repo_dir,
+        non_interactive=True,
+        skill_source=SKILL_SRC,
+        skip_ruleset=True,
+    )
+    assert res.success is True
+
+    main_author = subprocess.check_output(["git", "log", "main", "-1", "--format=%an <%ae>"], cwd=repo_dir, text=True).strip()
+    assert main_author == "Signoff Bot <signoff@example.com>"
+
+    branch_author = subprocess.check_output(["git", "log", "signoff/init", "-1", "--format=%an <%ae>"], cwd=repo_dir, text=True).strip()
+    assert branch_author == "Signoff Bot <signoff@example.com>"
+
+
+@pytest.mark.parametrize("allow_dirty", [False, True])
+def test_unborn_repo_with_staged_changes_fails(tmp_path, allow_dirty):
+    repo_dir = tmp_path / f"unborn_staged_{allow_dirty}"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
+    (repo_dir / "unreviewed.txt").write_text("unreviewed")
+    subprocess.run(["git", "add", "unreviewed.txt"], cwd=repo_dir, check=True)
+
+    with pytest.raises(RuntimeError, match="staged changes"):
+        init.run_init(
+            repo_root=repo_dir,
+            non_interactive=True,
+            skill_source=SKILL_SRC,
+            skip_ruleset=True,
+            allow_dirty=allow_dirty,
+        )
+
+
+def test_unborn_repo_rollback_on_failure(tmp_path):
+    repo_dir = tmp_path / "unborn_rollback"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
+    bad_skill_src = tmp_path / "nonexistent_skills_dir"
+
+    with pytest.raises(RuntimeError):
+        init.run_init(
+            repo_root=repo_dir,
+            non_interactive=True,
+            skill_source=bad_skill_src,
+            skip_ruleset=True,
+        )
+
+    # Branch signoff/init should be cleaned up
+    branches = subprocess.check_output(["git", "branch", "--list"], cwd=repo_dir, text=True)
+    assert "signoff/init" not in branches
+
+    # HEAD should be on main at the empty initial commit
+    head_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_dir, text=True).strip()
+    assert head_branch == "main"
+    commits = subprocess.check_output(["git", "log", "main", "--oneline"], cwd=repo_dir, text=True).splitlines()
+    assert len(commits) == 1
+    assert "chore: initialize main" in commits[0]
+
+
+@pytest.mark.parametrize("benign_name", [".DS_Store", "Thumbs.db", "desktop.ini"])
+def test_policy_a_ignores_benign_metadata(temp_git_repo, benign_name):
+    dest = temp_git_repo / ".claude" / "skills" / "signoff"
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / benign_name).write_bytes(b"\x00\x00\x00\x01")
+    (temp_git_repo / ".gitignore").write_text(f"{benign_name}\n")
+    subprocess.run(["git", "add", ".gitignore"], cwd=temp_git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", f"ignore {benign_name}"], cwd=temp_git_repo, check=True)
+
+    # Should not raise Policy A error
+    init.validate_policy_a(dest, temp_git_repo, allow_dirty=False)
+
+
+def test_policy_a_benign_metadata_with_real_ignored_file_fails(temp_git_repo):
+    dest = temp_git_repo / ".claude" / "skills" / "signoff"
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / ".DS_Store").write_bytes(b"\x00\x00\x00\x01")
+    (dest / "secret.key").write_text("secret")
+    (temp_git_repo / ".gitignore").write_text(".DS_Store\n*.key\n")
+    subprocess.run(["git", "add", ".gitignore"], cwd=temp_git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "ignore files"], cwd=temp_git_repo, check=True)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        init.validate_policy_a(dest, temp_git_repo, allow_dirty=False)
+    err = str(exc_info.value)
+    assert 'rm -f ".claude/skills/signoff/secret.key"' in err
+    assert ".DS_Store" not in err
+
+
+def test_policy_a_diagnostic_exact_path(temp_git_repo):
+    dest = temp_git_repo / ".claude" / "skills" / "signoff"
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "ignored_file.log").write_text("log content")
+    (temp_git_repo / ".gitignore").write_text("*.log\n")
+    subprocess.run(["git", "add", ".gitignore"], cwd=temp_git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "ignore logs"], cwd=temp_git_repo, check=True)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        init.validate_policy_a(dest, temp_git_repo, allow_dirty=False)
+    err = str(exc_info.value)
+    assert 'rm -f ".claude/skills/signoff/ignored_file.log"' in err
+    assert "--allow-dirty" not in err
+
+
+@pytest.mark.parametrize("marker", [".gemini", ".codex", ".opencode"])
+def test_tier2_markers_gemini_codex_opencode(tmp_path, marker):
+    repo = tmp_path / f"repo_{marker.strip('.')}"
+    repo.mkdir()
+    (repo / marker).mkdir()
+    dest = init.detect_skill_destinations(repo)
+    assert dest == [repo / ".agents" / "skills" / "signoff"]
+
+
+def test_tier2_marker_gemini_md(tmp_path):
+    repo = tmp_path / "repo_gemini_md"
+    repo.mkdir()
+    (repo / "GEMINI.md").write_text("# Gemini Guide\n")
+    dest = init.detect_skill_destinations(repo)
+    assert dest == [repo / ".agents" / "skills" / "signoff"]
+
+
+def test_no_remote_next_steps(tmp_path, monkeypatch, capsys):
+    repo_dir = tmp_path / "local_only"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
+    (repo_dir / "README.md").write_text("# Local\n")
+    subprocess.run(["git", "add", "README.md"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "commit", "-m", "initial"], cwd=repo_dir, check=True)
+
+    monkeypatch.chdir(repo_dir)
+    with patch.object(sys, "argv", ["init.py", "--non-interactive", "--skill-source", str(SKILL_SRC), "--skip-ruleset"]):
+        init.main()
+
+    out = capsys.readouterr().out
+    assert "git remote add origin" in out
+
+
+def test_with_remote_next_steps(tmp_path, monkeypatch, capsys):
+    repo_dir = tmp_path / "with_remote"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "remote", "add", "origin", "https://github.com/example-org/with-remote.git"], cwd=repo_dir, check=True)
+    (repo_dir / "README.md").write_text("# Remote\n")
+    subprocess.run(["git", "add", "README.md"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "commit", "-m", "initial"], cwd=repo_dir, check=True)
+
+    monkeypatch.chdir(repo_dir)
+    with patch.object(sys, "argv", ["init.py", "--non-interactive", "--skill-source", str(SKILL_SRC), "--skip-ruleset"]):
+        init.main()
+
+    out = capsys.readouterr().out
+    assert "git push -u origin signoff/init" in out
+    assert "git remote add origin" not in out
+
+

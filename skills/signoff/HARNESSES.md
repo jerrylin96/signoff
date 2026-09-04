@@ -256,6 +256,9 @@ Start from a shipped profile:
   unit/dimensional validity, surrogate-vs-ground-truth boundaries, numerical
   stability, statistical validity, uncertainty quantification,
   reproducibility.
+- [profiles/README.md](profiles/README.md) — complete guide to authoring
+  scientific and domain-specific profiles with 4 discipline-specific templates
+  (fluids/climate, genomics, AI surrogate models, numerical analysis).
 
 Malformed or out-of-scope file-sourced profiles (missing markers or
 `Profile-ID`, attempts to weaken axes or pass criteria, instructions

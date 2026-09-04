@@ -17,8 +17,9 @@ squash merges.
 
 Run inside your repository root:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v4/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
 ```
+
 This automatically scaffolds the workflow, selects your domain interview profile, configures the README badge, configures GitHub ruleset protection, and creates a setup branch ready for `/signoff`.
 
 ---
@@ -107,6 +108,56 @@ Running it is non-destructive to your signoff notes: it fetches origin's
 notes into an isolated mirror (`refs/notes/signoff-verify`) and never writes
 to `refs/notes/signoff` — ensuring any unpushed local attestations remain
 intact and verifiable (gsa-core §5.1).
+
+## Auditing & retrieving interview transcripts
+
+Git signoff attestations bind the interview transcript's SHA-256 digest (`Signoff-Transcript-Digest`) into immutable git history and notes. Transcripts remain locally on the reviewer's laptop for privacy and security. Anyone — leads, reviewers, compliance auditors — can verify or audit the transcript at any time using the verifier CLI.
+
+### The 3-Step Verification Loop (Auditor $\leftrightarrow$ Reviewer)
+
+```text
+Auditor (Lead / Compliance)                  Reviewer (Employee)
+           │                                          │
+           │  1. Request transcript snapshot          │
+           │  (quotes commit or PR)                   │
+           ├─────────────────────────────────────────>│
+           │                                          │  2. Export snapshot:
+           │                                          │     verify_signoff.py --audit HEAD
+           │                                          │       --export transcript.jsonl
+           │  3. Send transcript.jsonl                │
+           │<─────────────────────────────────────────┤
+           │                                          │
+           │  4. Verify against git trailers:         │
+           │     SIGNOFF_TRANSCRIPT_FILE=transcript.jsonl
+           │     python3 verify_signoff.py --audit HEAD
+           │                                          │
+           │  Output: ✅ VALID MATCH                   │
+```
+
+#### Step 1: Auditor requests transcript
+The auditor identifies the attestation on the commit or PR (e.g. `[SIGNOFF 979cb45]`) and asks the reviewer to export the session transcript.
+
+#### Step 2: Reviewer exports transcript
+On the machine where the signoff interview occurred, the reviewer runs the verifier CLI with `--audit` and `--export`:
+```bash
+python3 verify/verify_signoff.py --audit HEAD --export /tmp/transcript.jsonl
+```
+The verifier resolves the local transcript for the harness (`claude-code`, `antigravity-cli`, `codex-cli`, etc.), checks that the first $N$ bytes match the `Signoff-Transcript-Digest` trailer, and writes the snapshot to the specified path:
+```text
+✅ VALID MATCH: Transcript SHA-256 matches sha256:1675b6...
+  Harness: claude-code
+  Conversation ID: 979cb45-session
+  Bytes verified: 8432
+  Exported snapshot to: /tmp/transcript.jsonl
+```
+The reviewer sends `/tmp/transcript.jsonl` to the auditor.
+
+#### Step 3: Auditor verifies snapshot against git trailers
+The auditor points `SIGNOFF_TRANSCRIPT_FILE` at the received file and audits the target commit:
+```bash
+SIGNOFF_TRANSCRIPT_FILE=/tmp/transcript.jsonl python3 verify/verify_signoff.py --audit HEAD
+```
+The verifier recomputes the SHA-256 digest and confirms it matches the git attestation byte-for-byte.
 
 ## What a green badge means — and doesn't
 

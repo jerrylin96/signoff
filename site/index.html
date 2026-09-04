@@ -182,6 +182,31 @@
   .row .note { font-size: .92rem; color: var(--ink-2); max-width: 62ch; margin-bottom: .9rem; }
   .row .note a { color: inherit; }
 
+  /* callout box */
+  .callout-box {
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 1.25rem 1.4rem;
+    margin: 1.6rem 0 1.8rem;
+  }
+  .callout-box h3 {
+    font-size: 1.02rem;
+    font-weight: 650;
+    margin-bottom: .4rem;
+    color: var(--ink);
+  }
+  .callout-box p {
+    font-size: .92rem;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin-bottom: .8rem;
+    line-height: 1.6;
+  }
+  .callout-box p:last-of-type { margin-bottom: 0; }
+  .callout-box pre.cmd { margin-top: .8rem; }
+
   pre.cmd {
     background: var(--code-bg); color: var(--code-ink);
     font: .82rem/1.7 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -255,10 +280,12 @@
     <nav class="primary" aria-label="Sections">
       <a href="#what">What it is</a>
       <a href="#attestation">The attestation</a>
+      <a href="#audit">Audit</a>
       <a href="#install">Install</a>
       <a href="#customize">Customize</a>
       <a href="#badge">Badge</a>
     </nav>
+
     <div class="gh"><a href="https://github.com/jerrylin96/signoff">GitHub&nbsp;↗</a></div>
   </div>
 </header>
@@ -372,11 +399,50 @@ and risk attestation</span>
   </div>
 </section>
 
-<!-- ================= 03 INSTALL ================= -->
-<section class="block" id="install">
+<!-- ================= 03 AUDIT ================= -->
+<section class="block" id="audit">
   <div class="wrap sec">
     <div class="label">
       <span class="num">03</span>
+      <h2>Auditing &amp; retrieving interview transcripts</h2>
+    </div>
+    <div class="body">
+      <p>Git signoff attestations bind the interview transcript's SHA-256 digest
+      into immutable git history and notes. Transcripts remain locally on the
+      reviewer's machine for privacy. Anyone — leads, reviewers, compliance officers —
+      can verify or audit the transcript at any time using a simple three-step loop.</p>
+      <div class="rows">
+        <div class="row">
+          <h3>Step 1: Auditor requests interview transcript snapshot</h3>
+          <p class="note">The auditor spots the attestation on the commit or PR and asks the employee or reviewer to export the session transcript for verification.</p>
+        </div>
+        <div class="row">
+          <h3>Step 2: Reviewer exports transcript snapshot</h3>
+          <p class="note">On the machine where the signoff interview took place, the reviewer runs the verifier with <code class="inline">--audit</code> and <code class="inline">--export</code> to extract the exact byte snapshot:</p>
+          <pre class="cmd"><code>python3 verify/verify_signoff.py --audit HEAD --export transcript.jsonl</code></pre>
+          <p class="note">The verifier verifies that the local session transcript matches the commit's <code class="inline">Signoff-Transcript-Digest</code> and writes the snapshot to the target path.</p>
+        </div>
+        <div class="row">
+          <h3>Step 3: Auditor verifies snapshot against git trailers</h3>
+          <p class="note">The reviewer sends <code class="inline">transcript.jsonl</code> to the auditor. The auditor verifies the received transcript against the git trailers:</p>
+          <pre class="cmd"><code>SIGNOFF_TRANSCRIPT_FILE=transcript.jsonl python3 verify/verify_signoff.py --audit HEAD</code></pre>
+          <p class="note">Output confirms the transcript digest matches byte-for-byte:</p>
+          <pre class="cmd"><code>✅ VALID MATCH: Transcript SHA-256 matches sha256:1675b6...
+  Harness: claude-code
+  Conversation ID: 979cb45-session
+  Bytes verified: 8432
+  Exported snapshot to: transcript.jsonl</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 04 INSTALL ================= -->
+<section class="block" id="install">
+  <div class="wrap sec">
+    <div class="label">
+      <span class="num">04</span>
       <h2>Install: one folder, committed to your repo</h2>
     </div>
     <div class="body">
@@ -393,8 +459,13 @@ and risk attestation</span>
           <code class="inline">.agents/skills/signoff</code> (use
           <code class="inline">--skill-target {auto,claude,agents,both}</code> to control destinations), scaffolds the CI
           gate and interview profile, and opens a ready-to-merge branch.</p>
-          <pre class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v4/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py</code></pre>
+          <pre class="cmd"><code><span class="c"># standard software engineering profile:</span>
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py
+
+<span class="c"># scientific &amp; research computing profile (math, physics, bio, climate, ML):</span>
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py --profile domain-science</code></pre>
         </div>
+
         <div class="row">
           <h3>Any repository — manual</h3>
           <p class="note">Copy <code class="inline">skills/signoff/</code> to
@@ -414,11 +485,11 @@ and risk attestation</span>
   </div>
 </section>
 
-<!-- ================= 04 CUSTOMIZE ================= -->
+<!-- ================= 05 CUSTOMIZE ================= -->
 <section class="block" id="customize">
   <div class="wrap sec">
     <div class="label">
-      <span class="num">04</span>
+      <span class="num">05</span>
       <h2>Make the interview yours</h2>
     </div>
     <div class="body">
@@ -427,6 +498,19 @@ and risk attestation</span>
       weights the questions toward your domain’s failure modes. Profiles can
       add emphases but can never remove axes or lower pass criteria: a
       customized interview is never a weaker one.</p>
+
+      <div class="callout-box">
+        <h3>🔬 For Scientists, Physicists, Mathematicians &amp; ML Researchers</h3>
+        <p>Research code fails differently: it rarely crashes; it produces <em>plausible-but-invalid science</em>.
+        Standard software engineering questions (<em>O(N log N)</em> complexity, API contracts, thread safety) will not catch
+        energy drift, subtle dimensional slips, uncorrected multiple testing, or data leakage across spatial folds.</p>
+        <p>Use the shipped <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/profiles/domain-science.md"><code class="inline">domain-science</code></a> profile
+        or follow the <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/profiles/README.md"><strong>scientific profile authoring guide</strong></a>
+        with ready-to-use templates for fluid dynamics, bioinformatics, neural surrogate models, and numerical analysis.</p>
+        <pre class="cmd"><code><span class="c"># scaffold a scientific profile in .signoff/profile.md:</span>
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py --profile domain-science</code></pre>
+      </div>
+
       <ol class="steps">
         <li>
           <h3>Create <code class="inline">.signoff/profile.md</code> in your repo</h3>
@@ -435,13 +519,14 @@ and risk attestation</span>
           updates.</p>
         </li>
         <li>
-          <h3>Start from a shipped profile</h3>
+          <h3>Start from a shipped profile or discipline template</h3>
           <p>Paste in
           <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/profiles/domain-science.md"><code class="inline">domain-science</code></a>
           (research code) or
           <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/profiles/software-general.md"><code class="inline">software-general</code></a>
-          (classic engineering) — or rewrite the bullets to name
-          <em>your</em> failure modes: conservation properties of a new
+          (classic engineering) — or adapt a discipline template from
+          <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/profiles/README.md">the authoring guide</a>
+          to name <em>your</em> failure modes: conservation properties of a new
           parameterization, grid-resolution sensitivity of a reported trend,
           leakage between reanalysis training and evaluation periods.</p>
         </li>
@@ -458,11 +543,11 @@ Signoff-Agent: … interview=standard/your-lab-id/sha256:5fd075753d5b</code></pr
   </div>
 </section>
 
-<!-- ================= 05 BADGE ================= -->
+<!-- ================= 06 BADGE ================= -->
 <section class="block" id="badge">
   <div class="wrap sec">
     <div class="label">
-      <span class="num">05</span>
+      <span class="num">06</span>
       <h2>Show your work is answered&nbsp;for</h2>
     </div>
     <div class="body">

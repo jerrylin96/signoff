@@ -35,7 +35,7 @@ def test_site_covers_install_channel_and_links():
     html = _html()
     # Candidate distribution channels: skill folders vendored into target repo.
     assert ".claude/skills/signoff/" in html
-    assert "raw.githubusercontent.com/jerrylin96/signoff/init-v4/init.py" in html
+    assert "raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py" in html
     assert ".agents/skills/signoff" in html
     assert "skills/signoff/specs/gsa-core.md" in html
     assert "HARNESSES.md" in html
@@ -44,10 +44,33 @@ def test_site_covers_install_channel_and_links():
     assert "/plugin install" not in html
 
 
+def test_site_covers_audit_walkthrough():
+    html = _html()
+    assert 'id="audit"' in html
+    assert 'href="#audit"' in html
+    assert "--audit" in html
+    assert "--export" in html
+
+
 def test_site_advertises_badge_and_verifier():
     html = _html()
     assert "attested by humans" in html
     assert "jerrylin96/signoff/verify@main" in html
+
+
+def test_site_section_numbers_are_sequential():
+    html = _html()
+    nums = re.findall(r'<span class="num">(\d+)</span>', html)
+    assert nums, "No section numbers found"
+    expected = [f"{i:02d}" for i in range(1, len(nums) + 1)]
+    assert nums == expected
+    assert len(nums) == len(set(nums)), "Duplicate section numbers detected"
+
+
+def test_site_has_no_unrendered_latex():
+    html = _html()
+    # Unrendered LaTeX math ($...$) must not appear on the website since no math renderer is loaded.
+    assert not re.search(r"\$[^$\n]+\$", html), "Unrendered LaTeX math syntax found in site HTML"
 
 
 def test_pages_workflow_deploys_site_dir():

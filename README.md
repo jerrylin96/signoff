@@ -52,7 +52,11 @@ you'd notice drift outside them. That is exactly the part a human must own.
 Inside your repository root, run the zero-touch initializer (Python 3.10+ stdlib only — zero dependencies):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v4/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
+# Standard software engineering profile:
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
+
+# Scientific & research computing profile (math, physics, bio, climate, ML):
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py --profile domain-science
 ```
 
 The script automatically:
@@ -89,6 +93,58 @@ AI: ✅ Attestation commit [SIGNOFF a1b2c3d] created! Your badge is green.
 
 ---
 
+## Auditing & retrieving interview transcripts
+
+Git signoff attestations bind the interview transcript's SHA-256 digest (`Signoff-Transcript-Digest`) into immutable git history and notes. Transcripts remain locally on the reviewer's laptop for privacy and security. Anyone — leads, reviewers, compliance auditors — can verify or audit the transcript at any time using the verifier CLI.
+
+### The 3-Step Verification Loop (Auditor $\leftrightarrow$ Reviewer)
+
+```text
+Auditor (Lead / Compliance)                  Reviewer (Employee)
+           │                                          │
+           │  1. Request transcript snapshot          │
+           │  (quotes commit or PR)                   │
+           ├─────────────────────────────────────────>│
+           │                                          │  2. Export snapshot:
+           │                                          │     verify_signoff.py --audit HEAD
+           │                                          │       --export transcript.jsonl
+           │  3. Send transcript.jsonl                │
+           │<─────────────────────────────────────────┤
+           │                                          │
+           │  4. Verify against git trailers:         │
+           │     SIGNOFF_TRANSCRIPT_FILE=transcript.jsonl
+           │     python3 verify_signoff.py --audit HEAD
+           │                                          │
+           │  Output: ✅ VALID MATCH                   │
+```
+
+#### Step 1: Auditor requests transcript
+The auditor identifies the attestation on the commit or PR (e.g. `[SIGNOFF 979cb45]`) and asks the reviewer to export the session transcript.
+
+#### Step 2: Reviewer exports transcript
+On the machine where the signoff interview occurred, the reviewer runs the verifier CLI with `--audit` and `--export`:
+```bash
+python3 verify/verify_signoff.py --audit HEAD --export /tmp/transcript.jsonl
+```
+The verifier resolves the local transcript for the harness (`claude-code`, `antigravity-cli`, `codex-cli`, etc.), checks that the first $N$ bytes match the `Signoff-Transcript-Digest` trailer, and writes the snapshot to the specified path:
+```text
+✅ VALID MATCH: Transcript SHA-256 matches sha256:1675b6...
+  Harness: claude-code
+  Conversation ID: 979cb45-session
+  Bytes verified: 8432
+  Exported snapshot to: /tmp/transcript.jsonl
+```
+The reviewer sends `/tmp/transcript.jsonl` to the auditor.
+
+#### Step 3: Auditor verifies snapshot against git trailers
+The auditor points `SIGNOFF_TRANSCRIPT_FILE` at the received file and audits the target commit:
+```bash
+SIGNOFF_TRANSCRIPT_FILE=/tmp/transcript.jsonl python3 verify/verify_signoff.py --audit HEAD
+```
+The verifier recomputes the SHA-256 digest and confirms it matches the git attestation byte-for-byte.
+
+---
+
 ## Installation
 
 One channel, everywhere: the skill is a self-contained folder of Markdown
@@ -98,7 +154,7 @@ nothing account-scoped.
 
 | Where you work | One-time action |
 |---|---|
-| **Any repository (Zero-touch)** | `curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v4/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py` (use `--skill-target {auto,claude,agents,both}` to control destinations) |
+| **Any repository (Zero-touch)** | `curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py` (use `--skill-target {auto,claude,agents,both}` to control destinations) |
 | **Any repository (manual)** | Copy this repo's `skills/signoff/` folder to `<your-repo>/.claude/skills/signoff/` (Claude Code) or `<your-repo>/.agents/skills/signoff/` (Antigravity, Codex, Cursor, etc.) and commit before running the initializer; an untracked skill destination now aborts as an unrelated working-tree change. Update by re-copying (or re-running the initializer) on new releases. |
 | **Other harnesses (Antigravity, Codex, Cursor, …)** | Same folder, cross-client convention: copy `skills/signoff/` into `.agents/skills/signoff` (or `.claude/skills/signoff`) and set the transcript adapter env vars — full matrix in [HARNESSES.md](skills/signoff/HARNESSES.md). |
 
@@ -116,13 +172,34 @@ customization point of the skill; profiles can add domain emphases but can
 never remove axes or lower pass criteria, so a customized interview is never
 a weaker one.
 
-**The dead-simple path — commit a profile to your own repository:**
+### 🔬 Designing a Profile for Scientific & Research Code
 
-1. In the repo you want reviewed, create `.signoff/profile.md`.
-2. Paste in a shipped profile block —
+Generic software engineering questions ($O(N \log N)$ complexity, API contracts, thread safety) will **not** catch research bugs. Scientific code fails silently with plausible-looking numbers:
+- **Numerical Stability & Conditioning:** Catastrophic cancellation in floating-point diffs, ill-conditioned matrices, underflow/overflow in log-space computations, gradient explosion/vanishing.
+- **Physical Invariants & Conservation:** Leakage of mass, energy, momentum, or probability across time steps; violation of positivity constraints (e.g. negative tracer concentrations); CFL condition violations when time-stepping.
+- **Statistical Validity & Data Leakage:** Contamination between spatial/temporal training and test splits, lookahead bias in climate/financial series, uncorrected multiple hypothesis testing ($p$-hacking), circular feature engineering.
+- **Surrogate Boundaries & Validity Regimes:** Out-of-distribution neural network surrogates used outside their training domain, unquantified epistemic uncertainty, lack of physics-informed fallback.
+- **Provenance & Reproducibility:** Floating-point non-determinism across GPU architectures, unseeded RNG streams, dataset version drift.
+
+See [**skills/signoff/profiles/README.md**](skills/signoff/profiles/README.md) for the complete authoring guide and ready-to-use templates for:
+1. **Fluid Dynamics & Climate Simulation** (CFL stability, discrete conservation laws, grid interpolation)
+2. **Bioinformatics & Computational Genomics** (multiple testing correction, reference genome versions, batch effects)
+3. **AI for Science & Neural Operators** (PDE surrogates, spectral bias, physical boundary condition compliance)
+4. **Numerical Linear Algebra & Optimization** (condition numbers, matrix decompositions, convergence tolerances)
+
+---
+
+### The dead-simple path — commit a profile to your own repository:
+
+1. In the repo you want reviewed, scaffold or create `.signoff/profile.md`:
+   ```bash
+   python3 /tmp/signoff-init.py --profile domain-science
+   ```
+2. Or paste in a shipped profile block —
    [`domain-science`](skills/signoff/profiles/domain-science.md) for research
    code, [`software-general`](skills/signoff/profiles/software-general.md)
-   for classic engineering — or edit its bullets into your own.
+   for classic engineering — or adapt a discipline template from
+   [`skills/signoff/profiles/README.md`](skills/signoff/profiles/README.md).
 3. Done. Every `/signoff` run on that repository now uses your profile — for
    every collaborator, on every install channel, surviving skill updates.
 
