@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -299,8 +300,9 @@ SKILL_SOURCE_REPO = "https://github.com/jerrylin96/signoff"
 # script version instead of silently tracking the default branch. Pin tags
 # never move; bump this together with the install snippets (README,
 # verify/README.md, site/index.html) and tag.yml's PINS list.
-SKILL_SOURCE_REF = "init-v4"
+SKILL_SOURCE_REF = "init-v5"
 VENDOR_STAMP_FILENAME = "VENDORED-FROM"
+BENIGN_METADATA_FILES: set[str] = {".DS_Store", "Thumbs.db", "desktop.ini"}
 
 
 def _git_head_commit(git_dir: Path) -> str:
@@ -338,9 +340,13 @@ def detect_skill_destinations(repo_root: Path) -> list[Path] | None:
     has_agents = (
         (repo_root / ".agents").is_dir()
         or (repo_root / ".cursor").is_dir()
+        or (repo_root / ".gemini").is_dir()
+        or (repo_root / ".codex").is_dir()
+        or (repo_root / ".opencode").is_dir()
         or (repo_root / "AGENTS.md").is_file()
         or (repo_root / "GEMINI.md").is_file()
     )
+
 
     if has_claude and not has_agents:
         return [claude_dest]
@@ -494,11 +500,13 @@ def validate_policy_a(dest: Path, repo_root: Path, *, allow_dirty: bool = False)
         if proc_ls.returncode != 0:
             raise RuntimeError(f"git ls-files failed with exit code {proc_ls.returncode}: {proc_ls.stderr.strip()}")
         if proc_ls.stdout:
-            ignored_files = [f for f in proc_ls.stdout.split("\0") if f]
+            raw_ignored = [f for f in proc_ls.stdout.split("\0") if f]
+            ignored_files = [f for f in raw_ignored if Path(f).name not in BENIGN_METADATA_FILES]
             if ignored_files:
+                rm_cmds = " ".join(f'rm -f "{f}"' for f in ignored_files)
                 raise RuntimeError(
                     f"Destination {rel} contains ignored untracked files: {', '.join(ignored_files)}. "
-                    "Remove them before running init."
+                    f"Remove them before running init: {rm_cmds}"
                 )
 
     # 4. Check for ordinary file conflict at destination
@@ -509,11 +517,14 @@ def validate_policy_a(dest: Path, repo_root: Path, *, allow_dirty: bool = False)
         )
 
     # 5. Check for unrelated non-empty directory
-    if dest.is_dir() and not (dest / "SKILL.md").is_file() and any(dest.iterdir()):
-        raise RuntimeError(
-            f"Destination {rel} is a non-empty directory not recognized as a /signoff skill. "
-            "Aborting to prevent data loss."
-        )
+    if dest.is_dir() and not (dest / "SKILL.md").is_file():
+        non_benign = [p for p in dest.iterdir() if p.name not in BENIGN_METADATA_FILES]
+        if non_benign:
+            raise RuntimeError(
+                f"Destination {rel} is a non-empty directory not recognized as a /signoff skill. "
+                "Aborting to prevent data loss."
+            )
+
 
 
 def vendor_skill(
@@ -990,12 +1001,7 @@ def _rollback_scaffold(
                 if failure:
                     failures.append(failure)
     # 3. Restore the starting branch and drop the abandoned setup branch.
-    if is_unborn:
-        # No commits exist, so there is no setup-branch ref to delete; just
-        # point HEAD back at the original unborn branch.
-        if original_branch:
-            run_git(["symbolic-ref", "HEAD", f"refs/heads/{original_branch}"], f"restore unborn branch {original_branch}")
-    elif original_branch:
+    if original_branch:
         run_git(["checkout", original_branch], f"restore branch {original_branch}")
         run_git(["branch", "-D", target_branch], f"delete abandoned branch {target_branch}")
     else:
@@ -1003,6 +1009,7 @@ def _rollback_scaffold(
         # branch shares it), then drop the branch name.
         run_git(["checkout", "--detach"], "restore detached HEAD")
         run_git(["branch", "-D", target_branch], f"delete abandoned branch {target_branch}")
+
 
     rels = sorted({path.relative_to(root).as_posix() for path in scaffold_paths})
     try:
@@ -1040,6 +1047,39 @@ def run_init(
     root = ctx.root
     effective_slug = slug or ctx.slug
 
+    if ctx.is_unborn:
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+        if staged.returncode == 0 and staged.stdout.strip():
+            raise RuntimeError(
+                "Cannot initialize unborn repository with staged changes; unstage or commit them first."
+            )
+        subprocess.run(
+            ["git", "symbolic-ref", "HEAD", f"refs/heads/{ctx.default_branch}"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+        )
+        env = os.environ.copy()
+        env.setdefault("GIT_AUTHOR_NAME", "Signoff Bot")
+        env.setdefault("GIT_AUTHOR_EMAIL", "signoff@example.com")
+        env.setdefault("GIT_COMMITTER_NAME", "Signoff Bot")
+        env.setdefault("GIT_COMMITTER_EMAIL", "signoff@example.com")
+        c_proc = subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", f"chore: initialize {ctx.default_branch}"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        if c_proc.returncode != 0:
+            raise RuntimeError(f"Failed to create initial commit on {ctx.default_branch}: {c_proc.stderr.strip()}")
+        ctx.current_branch = ctx.default_branch
+
     # Step 0.1: Clean tree guard
     ensure_clean_working_tree(root, allow_dirty=allow_dirty)
 
@@ -1067,24 +1107,20 @@ def run_init(
 
     # Step 0.5: Checkout target branch FIRST before scaffolding any files
     target_branch = resolve_branch_name(root, branch)
-    if ctx.is_unborn:
-        proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch], cwd=root, capture_output=True, text=True)
-        if proc.returncode != 0:
-            raise RuntimeError(f"Failed to create branch '{target_branch}': {proc.stderr.strip()}")
+    base_ref = ctx.default_branch
+    verify_local = subprocess.run(["git", "rev-parse", "--verify", f"{base_ref}^{{commit}}"], cwd=root, capture_output=True, text=True)
+    verify_remote = subprocess.run(["git", "rev-parse", "--verify", f"origin/{base_ref}^{{commit}}"], cwd=root, capture_output=True, text=True)
+    if verify_local.returncode == 0:
+        proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch, base_ref], cwd=root, capture_output=True, text=True)
+    elif verify_remote.returncode == 0:
+        proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch, f"origin/{base_ref}"], cwd=root, capture_output=True, text=True)
     else:
-        base_ref = ctx.default_branch
-        verify_local = subprocess.run(["git", "rev-parse", "--verify", f"{base_ref}^{{commit}}"], cwd=root, capture_output=True, text=True)
-        verify_remote = subprocess.run(["git", "rev-parse", "--verify", f"origin/{base_ref}^{{commit}}"], cwd=root, capture_output=True, text=True)
-        if verify_local.returncode == 0:
-            proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch, base_ref], cwd=root, capture_output=True, text=True)
-        elif verify_remote.returncode == 0:
-            proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch, f"origin/{base_ref}"], cwd=root, capture_output=True, text=True)
-        else:
-            print(f"  ℹ️  Notice: Base branch '{base_ref}' not found locally or on origin; branching '{target_branch}' from HEAD.")
-            proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch], cwd=root, capture_output=True, text=True)
+        print(f"  ℹ️  Notice: Base branch '{base_ref}' not found locally or on origin; branching '{target_branch}' from HEAD.")
+        proc = subprocess.run(["git", "checkout", "--no-track", "-b", target_branch], cwd=root, capture_output=True, text=True)
 
-        if proc.returncode != 0:
-            raise RuntimeError(f"Failed to create branch '{target_branch}': {proc.stderr.strip()}")
+    if proc.returncode != 0:
+        raise RuntimeError(f"Failed to create branch '{target_branch}': {proc.stderr.strip()}")
+
 
     # The branch now exists and later steps write files onto it. If any of them
     # fails (most commonly an offline vendor clone), roll the whole thing back
@@ -1251,11 +1287,19 @@ def main() -> int:
         print("=" * 60)
         print(f"\nBranch created: {res.branch}")
         print("\nNext Steps:")
-        print(f"  1. Push branch: git push -u origin {res.branch}")
+        remote_proc = subprocess.run(["git", "remote"], cwd=root_dir, capture_output=True, text=True)
+        has_origin = "origin" in remote_proc.stdout.split()
+        if has_origin:
+            print(f"  1. Push branch: git push -u origin {res.branch}")
+        else:
+            print("  1. Configure remote and push:")
+            print("     git remote add origin <url>")
+            print(f"     git push -u origin {res.branch}")
         print("  2. Run /signoff on this branch to review and attest your setup before merging")
         if res.pr_url:
             print(f"  3. Open PR:     {res.pr_url}")
         return 0
+
     except Exception as e:
         print(f"\n❌ Error during initialization: {e}", file=sys.stderr)
         return 1

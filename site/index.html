@@ -255,10 +255,12 @@
     <nav class="primary" aria-label="Sections">
       <a href="#what">What it is</a>
       <a href="#attestation">The attestation</a>
+      <a href="#audit">Audit</a>
       <a href="#install">Install</a>
       <a href="#customize">Customize</a>
       <a href="#badge">Badge</a>
     </nav>
+
     <div class="gh"><a href="https://github.com/jerrylin96/signoff">GitHub&nbsp;↗</a></div>
   </div>
 </header>
@@ -372,11 +374,50 @@ and risk attestation</span>
   </div>
 </section>
 
-<!-- ================= 03 INSTALL ================= -->
-<section class="block" id="install">
+<!-- ================= 03 AUDIT ================= -->
+<section class="block" id="audit">
   <div class="wrap sec">
     <div class="label">
       <span class="num">03</span>
+      <h2>Auditing &amp; retrieving interview transcripts</h2>
+    </div>
+    <div class="body">
+      <p>Git signoff attestations bind the interview transcript's SHA-256 digest
+      into immutable git history and notes. Transcripts remain locally on the
+      reviewer's machine for privacy. Anyone — leads, reviewers, compliance officers —
+      can verify or audit the transcript at any time using a simple three-step loop.</p>
+      <div class="rows">
+        <div class="row">
+          <h3>Step 1: Auditor requests interview transcript snapshot</h3>
+          <p class="note">The auditor spots the attestation on the commit or PR and asks the employee or reviewer to export the session transcript for verification.</p>
+        </div>
+        <div class="row">
+          <h3>Step 2: Reviewer exports transcript snapshot</h3>
+          <p class="note">On the machine where the signoff interview took place, the reviewer runs the verifier with <code class="inline">--audit</code> and <code class="inline">--export</code> to extract the exact byte snapshot:</p>
+          <pre class="cmd"><code>python3 verify/verify_signoff.py --audit HEAD --export transcript.jsonl</code></pre>
+          <p class="note">The verifier verifies that the local session transcript matches the commit's <code class="inline">Signoff-Transcript-Digest</code> and writes the snapshot to the target path.</p>
+        </div>
+        <div class="row">
+          <h3>Step 3: Auditor verifies snapshot against git trailers</h3>
+          <p class="note">The reviewer sends <code class="inline">transcript.jsonl</code> to the auditor. The auditor verifies the received transcript against the git trailers:</p>
+          <pre class="cmd"><code>SIGNOFF_TRANSCRIPT_FILE=transcript.jsonl python3 verify/verify_signoff.py --audit HEAD</code></pre>
+          <p class="note">Output confirms the transcript digest matches byte-for-byte:</p>
+          <pre class="cmd"><code>✅ VALID MATCH: Transcript SHA-256 matches sha256:1675b6...
+  Harness: claude-code
+  Conversation ID: 979cb45-session
+  Bytes verified: 8432
+  Exported snapshot to: transcript.jsonl</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 04 INSTALL ================= -->
+<section class="block" id="install">
+  <div class="wrap sec">
+    <div class="label">
+      <span class="num">04</span>
       <h2>Install: one folder, committed to your repo</h2>
     </div>
     <div class="body">
@@ -393,8 +434,9 @@ and risk attestation</span>
           <code class="inline">.agents/skills/signoff</code> (use
           <code class="inline">--skill-target {auto,claude,agents,both}</code> to control destinations), scaffolds the CI
           gate and interview profile, and opens a ready-to-merge branch.</p>
-          <pre class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v4/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py</code></pre>
+          <pre class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py</code></pre>
         </div>
+
         <div class="row">
           <h3>Any repository — manual</h3>
           <p class="note">Copy <code class="inline">skills/signoff/</code> to

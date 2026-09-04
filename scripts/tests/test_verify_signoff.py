@@ -537,7 +537,7 @@ def test_check_audit_missing_file(repo, tmp_path, monkeypatch):
         "session/123",
         "id;rm -rf",
         "id with space",
-        "id\x00null",
+        "id\\0null",
     ],
 )
 def test_check_audit_security_path_traversal(repo, bad_conv_id):
@@ -552,6 +552,25 @@ def test_check_audit_security_path_traversal(repo, bad_conv_id):
     ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
     assert ok is False
     assert any("Malformed or unsafe" in line for line in lines)
+
+
+def test_check_audit_security_null_byte(repo, monkeypatch):
+    trailers = {
+        "Signoff-Spec-Version": ["1.0"],
+        "Signoff-Status": ["VERIFIED_BY_HUMAN"],
+        "Signoff-Reviewed-Commit-SHA": ["a" * 40],
+        "Signoff-Reviewed-Tree-SHA": ["b" * 40],
+        "Signoff-Harness-ID": ["claude-code"],
+        "Signoff-Conversation-ID": ["id\x00null"],
+        "Signoff-Transcript-Digest": ["sha256:" + "c" * 64],
+        "Signoff-Transcript-Bytes": ["10"],
+        "Signoff-Verified-By": ["tester@example.com"],
+    }
+    monkeypatch.setattr(verify_signoff, "extract_attestation_trailers", lambda repo, target: trailers)
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is False
+    assert any("Malformed or unsafe" in line for line in lines)
+
 
 
 def test_check_audit_no_transcript_notice(repo):

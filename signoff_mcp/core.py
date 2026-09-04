@@ -98,12 +98,17 @@ def _resolve_reference(repo: GitRepo, target_ref: str, reference_ref: str | None
     if reference_ref:
         return reference_ref
     proc = repo.git("rev-parse", "--abbrev-ref", f"{target_ref}@{{upstream}}", check=False)
-    if proc.returncode != 0:
-        raise SignoffError(
-            f"No upstream configured for '{target_ref}'; pass reference_ref explicitly "
-            "(no hardcoded remote assumptions per GSA §2.3)."
-        )
-    return proc.stdout.strip()
+    if proc.returncode == 0 and proc.stdout.strip():
+        return proc.stdout.strip()
+    for candidate in ("main", "master"):
+        check_proc = repo.git("rev-parse", "--verify", f"refs/heads/{candidate}", check=False)
+        if check_proc.returncode == 0:
+            return candidate
+    raise SignoffError(
+        f"No upstream configured for '{target_ref}'; pass reference_ref explicitly "
+        "(no hardcoded remote assumptions per GSA §2.3)."
+    )
+
 
 
 def prepare(
