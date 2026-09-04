@@ -36,10 +36,32 @@ def test_prepare_resolves_shas_and_diff(scratch_repo):
     assert state.transcript_available is False
 
 
-def test_prepare_without_reference_and_no_upstream_errors(scratch_repo):
+def test_resolve_reference_upstream_fallback(scratch_repo):
     repo = core.GitRepo(str(scratch_repo))
+    # scratch_repo is on 'feature' off 'main', with no upstream configured
+    state = core.prepare(repo, "HEAD")
+    assert state.reference_ref == "main"
+    assert state.base_sha == repo.out("rev-parse", "main")
+
+
+def test_resolve_reference_master_fallback(tmp_path):
+    path = init_repo(tmp_path / "repo_master", branch="master")
+    commit_file(path, "base.txt", "base\n", "base commit")
+    git(path, "checkout", "-q", "-b", "feature")
+    commit_file(path, "feat.txt", "feat\n", "feat commit")
+    repo = core.GitRepo(str(path))
+    state = core.prepare(repo, "HEAD")
+    assert state.reference_ref == "master"
+    assert state.base_sha == repo.out("rev-parse", "master")
+
+
+def test_prepare_without_reference_and_no_upstream_or_default_branch_errors(tmp_path):
+    path = init_repo(tmp_path / "repo", branch="other-branch")
+    commit_file(path, "base.txt", "base\n", "base commit")
+    repo = core.GitRepo(str(path))
     with pytest.raises(core.SignoffError, match="reference_ref explicitly"):
         core.prepare(repo, "HEAD")
+
 
 
 def test_prepare_defaults_reference_to_upstream(tmp_path):

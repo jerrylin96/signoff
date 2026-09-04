@@ -62,3 +62,11 @@ def test_declared_pins_survive_the_guard():
         assert not glob_matches(guard_pattern(), pin), (
             f"declared pin {pin!r} would be rejected by the workflow's own guard"
         )
+
+
+def test_init_v5_declared_in_pins():
+    m = PINS_RE.search(workflow_text())
+    assert m, "PINS not declared in tag.yml"
+    pins = m.group(1).split()
+    assert "init-v5" in pins, f"init-v5 not declared in tag.yml PINS: {pins}"
+

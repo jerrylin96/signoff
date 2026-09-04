@@ -420,3 +420,324 @@ def test_head_mode_fails_on_squash_merge_onto_advanced_base_without_resignoff(re
     assert "1 valid attestation(s)" in lines_hist[0]
 
 
+# --- Audit Mode Tests ---
+
+import hashlib
+
+
+def audit_attestation_message(
+    reviewed_sha,
+    tree_sha,
+    harness_id="generic-file",
+    conv_id="test-conv-123",
+    digest="sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    nbytes="12",
+    status="VERIFIED_BY_HUMAN",
+):
+    return (
+        f"[SIGNOFF {reviewed_sha[:7]}]: human comprehension and risk attestation\n"
+        "\n"
+        "Signoff-Spec-Version: 1.0\n"
+        f"Signoff-Status: {status}\n"
+        f"Signoff-Reviewed-Commit-SHA: {reviewed_sha}\n"
+        f"Signoff-Reviewed-Tree-SHA: {tree_sha}\n"
+        f"Signoff-Harness-ID: {harness_id}\n"
+        f"Signoff-Conversation-ID: {conv_id}\n"
+        f"Signoff-Transcript-Digest: {digest}\n"
+        f"Signoff-Transcript-Bytes: {nbytes}\n"
+        "Signoff-Verified-By: tester@example.com\n"
+    )
+
+
+def test_check_audit_valid_match(repo, tmp_path, monkeypatch):
+    t_file = tmp_path / "transcript.jsonl"
+    raw_content = b'{"msg": "interview log"}\n{"msg": "extra"}\n'
+    t_file.write_bytes(raw_content)
+    nbytes = 25
+    expected_digest = f"sha256:{hashlib.sha256(raw_content[:nbytes]).hexdigest()}"
+    monkeypatch.setenv("SIGNOFF_TRANSCRIPT_FILE", str(t_file))
+
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    msg = audit_attestation_message(
+        reviewed, tree, harness_id="generic-file", conv_id="conv-1",
+        digest=expected_digest, nbytes=str(nbytes),
+    )
+    git(repo, "commit", "--allow-empty", "-m", msg)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is True
+    combined = "\n".join(lines)
+    assert "VALID MATCH" in combined
+    assert expected_digest in combined
+
+
+def test_check_audit_export(repo, tmp_path, monkeypatch):
+    t_file = tmp_path / "transcript.jsonl"
+    raw_content = b'{"msg": "first"}\n{"msg": "second"}\n'
+    t_file.write_bytes(raw_content)
+    nbytes = 17
+    expected_digest = f"sha256:{hashlib.sha256(raw_content[:nbytes]).hexdigest()}"
+    monkeypatch.setenv("SIGNOFF_TRANSCRIPT_FILE", str(t_file))
+
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    msg = audit_attestation_message(
+        reviewed, tree, harness_id="generic-file", conv_id="conv-2",
+        digest=expected_digest, nbytes=str(nbytes),
+    )
+    git(repo, "commit", "--allow-empty", "-m", msg)
+
+    export_path = tmp_path / "exported.jsonl"
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD", export_path=str(export_path))
+    assert ok is True
+    assert export_path.is_file()
+    assert export_path.read_bytes() == raw_content[:nbytes]
+
+
+def test_check_audit_mismatch(repo, tmp_path, monkeypatch):
+    t_file = tmp_path / "transcript.jsonl"
+    t_file.write_bytes(b'{"msg": "altered content"}\n')
+    monkeypatch.setenv("SIGNOFF_TRANSCRIPT_FILE", str(t_file))
+
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    msg = audit_attestation_message(
+        reviewed, tree, harness_id="generic-file", conv_id="conv-3",
+        digest="sha256:" + "a" * 64, nbytes="10",
+    )
+    git(repo, "commit", "--allow-empty", "-m", msg)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is False
+    assert any("MISMATCH" in line for line in lines)
+
+
+def test_check_audit_missing_file(repo, tmp_path, monkeypatch):
+    monkeypatch.setenv("SIGNOFF_TRANSCRIPT_FILE", str(tmp_path / "nonexistent.jsonl"))
+
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    msg = audit_attestation_message(
+        reviewed, tree, harness_id="generic-file", conv_id="conv-4",
+        digest="sha256:" + "b" * 64, nbytes="10",
+    )
+    git(repo, "commit", "--allow-empty", "-m", msg)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is False
+    assert any("Transcript file not found" in line for line in lines)
+
+
+@pytest.mark.parametrize(
+    "bad_conv_id",
+    [
+        "../../etc/passwd",
+        "../escape",
+        "session/123",
+        "id;rm -rf",
+        "id with space",
+        "id\x00null",
+    ],
+)
+def test_check_audit_security_path_traversal(repo, bad_conv_id):
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    msg = audit_attestation_message(
+        reviewed, tree, harness_id="claude-code", conv_id=bad_conv_id,
+        digest="sha256:" + "c" * 64, nbytes="10",
+    )
+    git(repo, "commit", "--allow-empty", "-m", msg)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is False
+    assert any("Malformed or unsafe" in line for line in lines)
+
+
+def test_check_audit_no_transcript_notice(repo):
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    msg = audit_attestation_message(
+        reviewed, tree, harness_id="unknown", conv_id="unavailable",
+        digest="unavailable", nbytes="unavailable",
+        status="VERIFIED_BY_HUMAN_NO_TRANSCRIPT_DIGEST",
+    )
+    git(repo, "commit", "--allow-empty", "-m", msg)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is True
+    assert any("NOTICE" in line for line in lines)
+
+
+def test_check_audit_no_attestation_fails(repo):
+    # Regular commit with no signoff message and no notes
+    commit_file(repo, "feature.txt", "content\n", "regular commit")
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is False
+    assert any("No signoff attestation found" in line for line in lines)
+
+
+def test_check_audit_from_git_notes_on_commit(repo, tmp_path, monkeypatch):
+    t_file = tmp_path / "notes_transcript.jsonl"
+    raw_content = b'{"msg": "note interview log"}\n'
+    t_file.write_bytes(raw_content)
+    nbytes = len(raw_content)
+    expected_digest = f"sha256:{hashlib.sha256(raw_content).hexdigest()}"
+    monkeypatch.setenv("SIGNOFF_TRANSCRIPT_FILE", str(t_file))
+
+    commit_file(repo, "feature.txt", "content\n", "regular feature commit")
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+
+    note_msg = audit_attestation_message(
+        reviewed, tree, harness_id="generic-file", conv_id="conv-note-1",
+        digest=expected_digest, nbytes=str(nbytes),
+    )
+    git(repo, "notes", "--ref=refs/notes/signoff", "add", "-m", note_msg, reviewed)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is True
+    assert any("VALID MATCH" in line for line in lines)
+
+
+def test_check_audit_from_git_notes_on_tree(repo, tmp_path, monkeypatch):
+    t_file = tmp_path / "tree_transcript.jsonl"
+    raw_content = b'{"msg": "tree note interview log"}\n'
+    t_file.write_bytes(raw_content)
+    nbytes = len(raw_content)
+    expected_digest = f"sha256:{hashlib.sha256(raw_content).hexdigest()}"
+    monkeypatch.setenv("SIGNOFF_TRANSCRIPT_FILE", str(t_file))
+
+    commit_file(repo, "feature.txt", "content\n", "squash commit without commit note")
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+
+    note_msg = audit_attestation_message(
+        reviewed, tree, harness_id="generic-file", conv_id="conv-tree-1",
+        digest=expected_digest, nbytes=str(nbytes),
+    )
+    # Attach note strictly to tree SHA
+    git(repo, "notes", "--ref=refs/notes/signoff", "add", "-m", note_msg, tree)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is True
+    assert any("VALID MATCH" in line for line in lines)
+
+
+def test_check_audit_multi_note_block_selection(repo, tmp_path, monkeypatch):
+    t_file = tmp_path / "multi_transcript.jsonl"
+    raw_content = b'{"msg": "selected block"}\n'
+    t_file.write_bytes(raw_content)
+    nbytes = len(raw_content)
+    expected_digest = f"sha256:{hashlib.sha256(raw_content).hexdigest()}"
+    monkeypatch.setenv("SIGNOFF_TRANSCRIPT_FILE", str(t_file))
+
+    commit_file(repo, "feature.txt", "content\n", "multi-note target commit")
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+
+    other_sha = "1" * 40
+    other_tree = "2" * 40
+    block1 = audit_attestation_message(
+        other_sha, other_tree, harness_id="generic-file", conv_id="other-conv",
+        digest="sha256:" + "0" * 64, nbytes="10",
+    )
+    block2 = audit_attestation_message(
+        reviewed, tree, harness_id="generic-file", conv_id="matching-conv",
+        digest=expected_digest, nbytes=str(nbytes),
+    )
+    combined_notes = f"{block1}\n\n{block2}"
+    git(repo, "notes", "--ref=refs/notes/signoff", "add", "-m", combined_notes, reviewed)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is True
+    assert any("VALID MATCH" in line for line in lines)
+
+
+def test_check_audit_harness_claude_code(repo, tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    root_str = str(repo.resolve())
+    slug = root_str.replace("/", "-")
+    conv_id = "claude-session-999"
+
+    claude_dir = home / ".claude" / "projects" / slug
+    claude_dir.mkdir(parents=True, exist_ok=True)
+    transcript_file = claude_dir / f"{conv_id}.jsonl"
+    raw_content = b'{"role": "assistant", "content": "audited session"}\n'
+    transcript_file.write_bytes(raw_content)
+    nbytes = len(raw_content)
+    expected_digest = f"sha256:{hashlib.sha256(raw_content).hexdigest()}"
+
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    msg = audit_attestation_message(
+        reviewed, tree, harness_id="claude-code", conv_id=conv_id,
+        digest=expected_digest, nbytes=str(nbytes),
+    )
+    git(repo, "commit", "--allow-empty", "-m", msg)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is True
+    assert any("VALID MATCH" in line for line in lines)
+
+
+def test_check_audit_harness_antigravity_cli(repo, tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    conv_id = "agy-session-888"
+    agy_dir = home / ".gemini" / "antigravity-cli" / "brain" / conv_id / ".system_generated" / "logs"
+    agy_dir.mkdir(parents=True, exist_ok=True)
+    transcript_file = agy_dir / "transcript.jsonl"
+    raw_content = b'{"action": "test", "result": "ok"}\n'
+    transcript_file.write_bytes(raw_content)
+    nbytes = len(raw_content)
+    expected_digest = f"sha256:{hashlib.sha256(raw_content).hexdigest()}"
+
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    msg = audit_attestation_message(
+        reviewed, tree, harness_id="antigravity-cli", conv_id=conv_id,
+        digest=expected_digest, nbytes=str(nbytes),
+    )
+    git(repo, "commit", "--allow-empty", "-m", msg)
+
+    ok, lines = verify_signoff.check_audit(str(repo), "HEAD")
+    assert ok is True
+    assert any("VALID MATCH" in line for line in lines)
+
+
+def test_check_audit_cli_flags(repo, tmp_path, monkeypatch):
+    t_file = tmp_path / "cli_transcript.jsonl"
+    raw_content = b'{"msg": "cli test"}\n'
+    t_file.write_bytes(raw_content)
+    nbytes = len(raw_content)
+    expected_digest = f"sha256:{hashlib.sha256(raw_content).hexdigest()}"
+    monkeypatch.setenv("SIGNOFF_TRANSCRIPT_FILE", str(t_file))
+
+    reviewed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+    msg = audit_attestation_message(
+        reviewed, tree, harness_id="generic-file", conv_id="cli-conv",
+        digest=expected_digest, nbytes=str(nbytes),
+    )
+    git(repo, "commit", "--allow-empty", "-m", msg)
+
+    export_path = tmp_path / "cli_exported.jsonl"
+
+    # 1. --export without --audit should fail
+    with pytest.raises(SystemExit):
+        verify_signoff.main(["--repo", str(repo), "--export", str(export_path)])
+
+    # 2. --audit with --export should succeed and write snapshot
+    rc = verify_signoff.main(["--repo", str(repo), "--audit", "HEAD", "--export", str(export_path)])
+    assert rc == 0
+    assert export_path.is_file()
+    assert export_path.read_bytes() == raw_content
+
+
+

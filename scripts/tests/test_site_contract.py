@@ -35,13 +35,21 @@ def test_site_covers_install_channel_and_links():
     html = _html()
     # Candidate distribution channels: skill folders vendored into target repo.
     assert ".claude/skills/signoff/" in html
-    assert "raw.githubusercontent.com/jerrylin96/signoff/init-v4/init.py" in html
+    assert "raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py" in html
     assert ".agents/skills/signoff" in html
     assert "skills/signoff/specs/gsa-core.md" in html
     assert "HARNESSES.md" in html
     # Retired account-scoped channels must not resurface as install paths.
     assert "signoff.zip" not in html
     assert "/plugin install" not in html
+
+
+def test_site_covers_audit_walkthrough():
+    html = _html()
+    assert 'id="audit"' in html
+    assert 'href="#audit"' in html
+    assert "--audit" in html
+    assert "--export" in html
 
 
 def test_site_advertises_badge_and_verifier():
