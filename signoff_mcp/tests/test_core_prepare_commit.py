@@ -63,6 +63,15 @@ def test_prepare_without_reference_and_no_upstream_or_default_branch_errors(tmp_
         core.prepare(repo, "HEAD")
 
 
+def test_resolve_reference_skips_target_branch_when_on_main_without_upstream(tmp_path):
+    path = init_repo(tmp_path / "repo_main", branch="main")
+    commit_file(path, "base.txt", "base\n", "base commit")
+    repo = core.GitRepo(str(path))
+    # On main with no upstream and no other candidate branch: should refuse to diff main against main
+    with pytest.raises(core.SignoffError, match="reference_ref explicitly"):
+        core.prepare(repo, "HEAD")
+
+
 
 def test_prepare_defaults_reference_to_upstream(tmp_path):
     origin = tmp_path / "origin.git"

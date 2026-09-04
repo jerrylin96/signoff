@@ -532,6 +532,10 @@ def test_check_audit_missing_file(repo, tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     "bad_conv_id",
     [
+        "..",
+        ".",
+        ".hidden",
+        "escape..double",
         "../../etc/passwd",
         "../escape",
         "session/123",
@@ -757,6 +761,75 @@ def test_check_audit_cli_flags(repo, tmp_path, monkeypatch):
     assert rc == 0
     assert export_path.is_file()
     assert export_path.read_bytes() == raw_content
+
+
+def test_check_history_preserves_target_ref_name(repo):
+    reviewed, tree = attest_head(repo)
+    payload = attestation_message(reviewed, tree)
+    git(repo, "notes", "--ref=refs/notes/signoff", "add", "-m", payload, reviewed)
+
+    ok, lines = verify_signoff.check_history(str(repo), "HEAD", require=1)
+    assert ok is True
+    # Crucial regression test: must not be shadowed by refs/notes/signoff-verify
+    assert lines[0] == "PASS: 1 valid attestation(s) in HEAD history"
+    assert "refs/notes" not in lines[0]
+
+
+def test_check_history_multi_block_notes(repo):
+    commit_file(repo, "feat1.txt", "1\n", "feat1")
+    sha1 = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree1 = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+
+    commit_file(repo, "feat2.txt", "2\n", "feat2")
+    sha2 = git(repo, "rev-parse", "HEAD").stdout.strip()
+    tree2 = git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+
+    block1 = attestation_message(sha1, tree1)
+    block2 = attestation_message(sha2, tree2)
+    combined = f"{block1}\n\n{block2}"
+
+    # Attach concatenated note blocks to sha2
+    git(repo, "notes", "--ref=refs/notes/signoff", "add", "-m", combined, sha2)
+
+    ok, lines = verify_signoff.check_history(str(repo), "HEAD", require=2)
+    assert ok is True
+    assert "PASS: 2 valid attestation(s) in HEAD history" in lines[0]
+
+
+def test_check_audit_harness_claude_code_worktree_fallback(repo, tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    root_str = str(repo.resolve())
+    main_slug = root_str.replace("/", "-")
+    conv_id = "claude-worktree-session"
+
+    # Transcript saved under main repo slug
+    claude_dir = home / ".claude" / "projects" / main_slug
+    claude_dir.mkdir(parents=True, exist_ok=True)
+    transcript_file = claude_dir / f"{conv_id}.jsonl"
+    raw_content = b'{"role": "assistant", "content": "worktree audit"}\n'
+    transcript_file.write_bytes(raw_content)
+    nbytes = len(raw_content)
+    expected_digest = f"sha256:{hashlib.sha256(raw_content).hexdigest()}"
+
+    # Create linked git worktree
+    wt_dir = tmp_path / "worktree_claude"
+    git(repo, "worktree", "add", "-b", "wt-branch", str(wt_dir))
+
+    reviewed = git(wt_dir, "rev-parse", "HEAD").stdout.strip()
+    tree = git(wt_dir, "rev-parse", "HEAD^{tree}").stdout.strip()
+    msg = audit_attestation_message(
+        reviewed, tree, harness_id="claude-code", conv_id=conv_id,
+        digest=expected_digest, nbytes=str(nbytes),
+    )
+    git(wt_dir, "commit", "--allow-empty", "-m", msg)
+
+    # Auditing from inside the worktree should resolve transcript from main repo slug
+    ok, lines = verify_signoff.check_audit(str(wt_dir), "HEAD")
+    assert ok is True
+    assert any("VALID MATCH" in line for line in lines)
 
 
 

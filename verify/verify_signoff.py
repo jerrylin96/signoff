@@ -261,8 +261,8 @@ def check_history(repo, ref, require):
     seen = set()
     payloads = history_payloads(repo, ref)
     annotated = []
-    for ref in (NOTES_REF, NOTES_FETCH_REF):
-        listing = git(repo, "notes", f"--ref={ref}", "list", check=False)
+    for n_ref in (NOTES_REF, NOTES_FETCH_REF):
+        listing = git(repo, "notes", f"--ref={n_ref}", "list", check=False)
         if listing.returncode != 0:
             continue
         for entry in listing.stdout.split("\n"):
@@ -270,7 +270,8 @@ def check_history(repo, ref, require):
                 annotated.append(entry.split()[1])
     for target in annotated:
         for payload in note_payloads(repo, target):
-            payloads.append((f"note on {target[:7]}", payload))
+            for block in split_attestation_blocks(payload):
+                payloads.append((f"note on {target[:7]}", block))
     for source, payload in payloads:
         trailers = parse_trailers(payload)
         problems = validate(trailers)
@@ -369,7 +370,12 @@ def check_audit(repo, target="HEAD", export_path=None):
         ]
 
     conv_id = trailers.get("Signoff-Conversation-ID", [""])[0]
-    if not conv_id or not CONV_ID_SAFE_RE.match(conv_id):
+    if (
+        not conv_id
+        or not CONV_ID_SAFE_RE.match(conv_id)
+        or ".." in conv_id
+        or conv_id.startswith(".")
+    ):
         return False, [f"FAIL: Malformed or unsafe Signoff-Conversation-ID {conv_id!r}"]
 
     expected_digest = trailers.get("Signoff-Transcript-Digest", [""])[0]
@@ -404,6 +410,19 @@ def check_audit(repo, target="HEAD", export_path=None):
                 pass
             slug = root.replace("/", "-")
             transcript_path = home_dir / ".claude" / "projects" / slug / f"{conv_id}.jsonl"
+            if not transcript_path.is_file():
+                proc_common = git(repo, "rev-parse", "--git-common-dir", check=False)
+                if proc_common.returncode == 0 and proc_common.stdout.strip():
+                    common_dir = proc_common.stdout.strip()
+                    main_root = os.path.abspath(os.path.join(root, common_dir, os.pardir))
+                    try:
+                        main_root = str(Path(main_root).resolve())
+                    except Exception:
+                        pass
+                    fallback_slug = main_root.replace("/", "-")
+                    fallback_path = home_dir / ".claude" / "projects" / fallback_slug / f"{conv_id}.jsonl"
+                    if fallback_path.is_file():
+                        transcript_path = fallback_path
         elif harness_id == "antigravity-cli":
             transcript_path = (
                 home_dir
