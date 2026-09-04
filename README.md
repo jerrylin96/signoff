@@ -52,7 +52,11 @@ you'd notice drift outside them. That is exactly the part a human must own.
 Inside your repository root, run the zero-touch initializer (Python 3.10+ stdlib only — zero dependencies):
 
 ```bash
+# Standard software engineering profile:
 curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py
+
+# Scientific & research computing profile (math, physics, bio, climate, ML):
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py && python3 /tmp/signoff-init.py --profile domain-science
 ```
 
 The script automatically:
@@ -168,13 +172,34 @@ customization point of the skill; profiles can add domain emphases but can
 never remove axes or lower pass criteria, so a customized interview is never
 a weaker one.
 
-**The dead-simple path — commit a profile to your own repository:**
+### 🔬 Designing a Profile for Scientific & Research Code
 
-1. In the repo you want reviewed, create `.signoff/profile.md`.
-2. Paste in a shipped profile block —
+Generic software engineering questions ($O(N \log N)$ complexity, API contracts, thread safety) will **not** catch research bugs. Scientific code fails silently with plausible-looking numbers:
+- **Numerical Stability & Conditioning:** Catastrophic cancellation in floating-point diffs, ill-conditioned matrices, underflow/overflow in log-space computations, gradient explosion/vanishing.
+- **Physical Invariants & Conservation:** Leakage of mass, energy, momentum, or probability across time steps; violation of positivity constraints (e.g. negative tracer concentrations); CFL condition violations when time-stepping.
+- **Statistical Validity & Data Leakage:** Contamination between spatial/temporal training and test splits, lookahead bias in climate/financial series, uncorrected multiple hypothesis testing ($p$-hacking), circular feature engineering.
+- **Surrogate Boundaries & Validity Regimes:** Out-of-distribution neural network surrogates used outside their training domain, unquantified epistemic uncertainty, lack of physics-informed fallback.
+- **Provenance & Reproducibility:** Floating-point non-determinism across GPU architectures, unseeded RNG streams, dataset version drift.
+
+See [**skills/signoff/profiles/README.md**](skills/signoff/profiles/README.md) for the complete authoring guide and ready-to-use templates for:
+1. **Fluid Dynamics & Climate Simulation** (CFL stability, discrete conservation laws, grid interpolation)
+2. **Bioinformatics & Computational Genomics** (multiple testing correction, reference genome versions, batch effects)
+3. **AI for Science & Neural Operators** (PDE surrogates, spectral bias, physical boundary condition compliance)
+4. **Numerical Linear Algebra & Optimization** (condition numbers, matrix decompositions, convergence tolerances)
+
+---
+
+### The dead-simple path — commit a profile to your own repository:
+
+1. In the repo you want reviewed, scaffold or create `.signoff/profile.md`:
+   ```bash
+   python3 /tmp/signoff-init.py --profile domain-science
+   ```
+2. Or paste in a shipped profile block —
    [`domain-science`](skills/signoff/profiles/domain-science.md) for research
    code, [`software-general`](skills/signoff/profiles/software-general.md)
-   for classic engineering — or edit its bullets into your own.
+   for classic engineering — or adapt a discipline template from
+   [`skills/signoff/profiles/README.md`](skills/signoff/profiles/README.md).
 3. Done. Every `/signoff` run on that repository now uses your profile — for
    every collaborator, on every install channel, surviving skill updates.
 

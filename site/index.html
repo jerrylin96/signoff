@@ -182,6 +182,31 @@
   .row .note { font-size: .92rem; color: var(--ink-2); max-width: 62ch; margin-bottom: .9rem; }
   .row .note a { color: inherit; }
 
+  /* callout box */
+  .callout-box {
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 1.25rem 1.4rem;
+    margin: 1.6rem 0 1.8rem;
+  }
+  .callout-box h3 {
+    font-size: 1.02rem;
+    font-weight: 650;
+    margin-bottom: .4rem;
+    color: var(--ink);
+  }
+  .callout-box p {
+    font-size: .92rem;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin-bottom: .8rem;
+    line-height: 1.6;
+  }
+  .callout-box p:last-of-type { margin-bottom: 0; }
+  .callout-box pre.cmd { margin-top: .8rem; }
+
   pre.cmd {
     background: var(--code-bg); color: var(--code-ink);
     font: .82rem/1.7 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -434,7 +459,11 @@ and risk attestation</span>
           <code class="inline">.agents/skills/signoff</code> (use
           <code class="inline">--skill-target {auto,claude,agents,both}</code> to control destinations), scaffolds the CI
           gate and interview profile, and opens a ready-to-merge branch.</p>
-          <pre class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py</code></pre>
+          <pre class="cmd"><code><span class="c"># standard software engineering profile:</span>
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py
+
+<span class="c"># scientific &amp; research computing profile (math, physics, bio, climate, ML):</span>
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py --profile domain-science</code></pre>
         </div>
 
         <div class="row">
@@ -469,6 +498,19 @@ and risk attestation</span>
       weights the questions toward your domain’s failure modes. Profiles can
       add emphases but can never remove axes or lower pass criteria: a
       customized interview is never a weaker one.</p>
+
+      <div class="callout-box">
+        <h3>🔬 For Scientists, Physicists, Mathematicians &amp; ML Researchers</h3>
+        <p>Research code fails differently: it rarely crashes; it produces <em>plausible-but-invalid science</em>.
+        Standard software engineering questions ($O(N \log N)$ complexity, API contracts, thread safety) will not catch
+        energy drift, subtle dimensional slips, uncorrected multiple testing, or data leakage across spatial folds.</p>
+        <p>Use the shipped <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/profiles/domain-science.md"><code class="inline">domain-science</code></a> profile
+        or follow the <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/profiles/README.md"><strong>scientific profile authoring guide</strong></a>
+        with ready-to-use templates for fluid dynamics, bioinformatics, neural surrogate models, and numerical analysis.</p>
+        <pre class="cmd"><code><span class="c"># scaffold a scientific profile in .signoff/profile.md:</span>
+curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py -o /tmp/signoff-init.py &amp;&amp; python3 /tmp/signoff-init.py --profile domain-science</code></pre>
+      </div>
+
       <ol class="steps">
         <li>
           <h3>Create <code class="inline">.signoff/profile.md</code> in your repo</h3>
@@ -477,13 +519,14 @@ and risk attestation</span>
           updates.</p>
         </li>
         <li>
-          <h3>Start from a shipped profile</h3>
+          <h3>Start from a shipped profile or discipline template</h3>
           <p>Paste in
           <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/profiles/domain-science.md"><code class="inline">domain-science</code></a>
           (research code) or
           <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/profiles/software-general.md"><code class="inline">software-general</code></a>
-          (classic engineering) — or rewrite the bullets to name
-          <em>your</em> failure modes: conservation properties of a new
+          (classic engineering) — or adapt a discipline template from
+          <a href="https://github.com/jerrylin96/signoff/blob/main/skills/signoff/profiles/README.md">the authoring guide</a>
+          to name <em>your</em> failure modes: conservation properties of a new
           parameterization, grid-resolution sensitivity of a reported trend,
           leakage between reanalysis training and evaluation periods.</p>
         </li>
