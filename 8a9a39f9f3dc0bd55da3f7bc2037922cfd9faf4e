@@ -1,0 +1,16 @@
+[SIGNOFF 801e9dc]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-09-04T21:37:47Z
+Signoff-Base-SHA: eaecec9cd5fa969a125930d9593c51c3c2720f91
+Signoff-Reviewed-Commit-SHA: 801e9dc5cb9e1ba731c23d0a63dd8253d67f0d3a
+Signoff-Reviewed-Tree-SHA: 8a9a39f9f3dc0bd55da3f7bc2037922cfd9faf4e
+Signoff-Harness-ID: antigravity-cli
+Signoff-Conversation-ID: b3c34c06-d392-4810-98a5-fe4cf1508723
+Signoff-Transcript-Digest: sha256:98bb2c6c08d1fcd3b291b46da1c43b32ecf44872b32c8cd04e0ea3a1dd6f1535
+Signoff-Transcript-Bytes: 1715222
+Signoff-Tradeoff: Expanding standalone verifier and initializer to support --audit and --export
+Signoff-Risk: Transcripts from ephemeral environments must be exported prior to teardown
+Signoff-Verified-By: jerrylin247365@gmail.com
+Signoff-Agent: harness=antigravity-cli/N/A model=gemini-2.5-pro reasoning=N/A interview=skeptical/software-general
