@@ -1,0 +1,22 @@
+[SIGNOFF 7cac13d]: human comprehension and risk attestation
+
+Signoff-Spec-Version: 1.0
+Signoff-Status: VERIFIED_BY_HUMAN
+Signoff-Timestamp: 2026-09-04T04:21:34Z
+Signoff-Base-SHA: ad7cde8e57c9c28f381442ee48124fadf58d0835
+Signoff-Reviewed-Commit-SHA: 7cac13dfeff7446dd74c0f712c5b8a387f634f82
+Signoff-Reviewed-Tree-SHA: 9fc9f5655562dbab10788110fef3965cfbc2270d
+Signoff-Harness-ID: codex-cli
+Signoff-Conversation-ID: 01a0658b-cd9c-7941-8bbf-ca12d097f0b4
+Signoff-Transcript-Digest: sha256:ecfa68e5bcda961bfba73a30a559bf0f471f24feb215a3f582ed8051c27a9d57
+Signoff-Transcript-Bytes: 2765222
+Signoff-Tradeoff: Existing installations take precedence and explicit targets union with them to prevent version drift.
+Signoff-Tradeoff: Managed skill destinations are replaced wholesale; direct committed customizations leave the new tree but remain recoverable in Git.
+Signoff-Tradeoff: --allow-dirty accepts only unrelated unstaged or untracked work; staged work must be committed or unstaged.
+Signoff-Tradeoff: init-v4 ships with current semantics; justified user feedback may be deferred to init-v5.
+Signoff-Risk: Rollback is best-effort and can leave partial local state, but failures are reported loudly.
+Signoff-Risk: A remotely created GitHub ruleset survives later local rollback and is explicitly reported.
+Signoff-Risk: Nonstandard or unavailable Codex transcripts cause a downgraded attestation requiring separate confirmation.
+Signoff-Risk: The attestation commit is unsigned because no signing key is configured.
+Signoff-Verified-By: jerrylin247365@gmail.com
+Signoff-Agent: harness=codex-cli/N/A model=gpt-5.6-sol reasoning=N/A interview=skeptical/software-general
