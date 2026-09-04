@@ -830,3 +830,36 @@ def test_cross_harness_matrix_coverage():
     assert "standard library" in content.lower() or "stdlib" in content.lower(), (
         "Missing zero external dependencies documentation in HARNESSES.md"
     )
+
+
+def test_domain_science_profile_block_parity():
+    """Verify domain-science profile block is byte-identical across domain-science.md, init.py, signoff_mcp/init.py, and profiles/README.md."""
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    science_md = os.path.join(root_dir, "skills/signoff/profiles/domain-science.md")
+    readme_md = os.path.join(root_dir, "skills/signoff/profiles/README.md")
+    init_py = os.path.join(root_dir, "init.py")
+    mcp_init_py = os.path.join(root_dir, "signoff_mcp/init.py")
+
+    with open(science_md, "r", encoding="utf-8") as f:
+        canonical_block = _extract_profile_block(f.read(), "domain-science.md")
+
+    for path, label in [(init_py, "init.py"), (mcp_init_py, "signoff_mcp/init.py")]:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        m = re.search(r'"domain-science":\s*"""(.*?)"""', content, re.DOTALL)
+        assert m, f"domain-science not found in {label} PROFILES"
+        init_block = _extract_profile_block(m.group(1), label)
+        assert canonical_block == init_block, f"domain-science block in {label} diverged from canonical domain-science.md"
+
+    with open(readme_md, "r", encoding="utf-8") as f:
+        readme_content = f.read()
+    ds_blocks = [
+        b for b in PROFILE_BLOCK_RE.findall(readme_content)
+        if "Profile-ID: domain-science" in b
+    ]
+    if ds_blocks:
+        assert len(ds_blocks) == 1, f"Expected at most 1 domain-science block in profiles/README.md, found {len(ds_blocks)}"
+        assert ds_blocks[0] == canonical_block, (
+            "domain-science block in profiles/README.md diverged from canonical domain-science.md"
+        )
+

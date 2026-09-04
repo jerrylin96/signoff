@@ -13,7 +13,7 @@ A generic software engineering interview asks about:
 - Data structure invariants (hash collisions, tree balancing)
 - Backward-compatible API endpoints
 
-These questions **miss 95% of catastrophic scientific bugs**. Research code rarely crashes on a bad map lookup; it produces **plausible-but-unphysical results** that get published, cited, and incorporated into downstream models before anyone notices.
+These questions **miss the silent, non-crashing bugs unique to scientific computing**. Research code rarely crashes on a bad map lookup; it produces **plausible-but-unphysical results** that get published, cited, and incorporated into downstream models before anyone notices.
 
 A scientific interview profile shifts the probe weight to:
 1. **Conservation & Physical Invariants:** Does the computation violate exact laws (energy, mass, momentum, charge)?
@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/jerrylin96/signoff/init-v5/init.py 
 This automatically writes `.signoff/profile.md` configured for scientific computing, vendors the skill, and sets up CI verification.
 
 ### Option B: Commit `.signoff/profile.md` Manually
-In any existing repository using `/signoff`, create `.signoff/profile.md` at the repository root:
+In any existing repository using `/signoff`, create `.signoff/profile.md` at the repository root and paste the canonical profile block from [`domain-science.md`](domain-science.md) (or copy verbatim below):
 
 ```markdown
 <!-- INTERVIEW-PROFILE:BEGIN (sole customization point — replace only this block) -->
@@ -46,16 +46,26 @@ Profile-ID: domain-science
 Domain emphases — weight probes within the universal axes; never remove axes
 or lower pass criteria:
 - **Unit & dimensional validity:** units, coordinate conventions, and
-  physical-constant provenance for every computed quantity the diff touches.
+  physical-constant provenance for every computed quantity the diff touches
+  (e.g. hPa vs. Pa, mixing ratio vs. specific humidity, model-level vs.
+  pressure-level coordinates).
 - **Surrogate vs. ground truth:** where approximations knowingly violate
-  exact domain laws; the parameter regimes where the surrogate is valid.
-- **Numerical stability:** conditioning, catastrophic cancellation, tolerance
-  choices, and regimes where the algorithm degrades before visibly failing.
-- **Statistical validity:** sampling assumptions, train/test leakage (spatial
-  or temporal overlap), and multiple-comparison correction.
-- **Uncertainty quantification:** error propagation, what reported intervals
-  include and what they silently exclude.
-- **Reproducibility:** seeds, environment pinning, and raw data provenance.
+  exact domain laws (e.g. an ML parameterization that leaks energy or
+  moisture); the parameter regimes where the surrogate is valid and what
+  detects drift outside them.
+- **Numerical stability:** conditioning of the chosen formulation,
+  catastrophic cancellation, tolerance and convergence-criterion choices,
+  and the regimes (e.g. CFL-limited timesteps, near-saturation moist
+  thermodynamics) where the algorithm degrades before it visibly fails.
+- **Statistical validity:** sampling assumptions, leakage between
+  train/validation/test splits (e.g. temporally or spatially overlapping
+  reanalysis periods), and multiple-comparison risks behind any reported
+  improvement.
+- **Uncertainty quantification:** how uncertainty is estimated and
+  propagated into every reported quantity; which error sources the reported
+  intervals (e.g. ensemble spread) include and which they silently exclude.
+- **Reproducibility:** seeds, environment pinning, and data provenance
+  required to regenerate the results the diff claims.
 <!-- INTERVIEW-PROFILE:END -->
 ```
 

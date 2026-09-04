@@ -67,6 +67,12 @@ def test_site_section_numbers_are_sequential():
     assert len(nums) == len(set(nums)), "Duplicate section numbers detected"
 
 
+def test_site_has_no_unrendered_latex():
+    html = _html()
+    # Unrendered LaTeX math ($...$) must not appear on the website since no math renderer is loaded.
+    assert not re.search(r"\$[^$\n]+\$", html), "Unrendered LaTeX math syntax found in site HTML"
+
+
 def test_pages_workflow_deploys_site_dir():
     wf = os.path.join(
         os.path.dirname(__file__), "..", "..", ".github", "workflows", "pages.yml"
